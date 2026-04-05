@@ -1,17 +1,23 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Logging;
+using NetGding.Contracts.Models.MarketData;
 using NetGding.Models.MarketData;
 
 namespace NetGding.Collector.Alpaca;
 
 public sealed class AlpacaOhlcvCollector : IAlpacaOhlcvCollector
 {
-    private readonly IAlpacaDataClient _client;
+    private readonly IAlpacaDataClient _stockClient;
+    private readonly IHistoricalBarsClient<HistoricalCryptoBarsRequest> _cryptoBarsClient;
     private readonly ILogger<AlpacaOhlcvCollector> _logger;
 
-    public AlpacaOhlcvCollector(IAlpacaDataClient client, ILogger<AlpacaOhlcvCollector> logger)
+    public AlpacaOhlcvCollector(
+        IAlpacaDataClient stockClient,
+        IAlpacaCryptoDataClient cryptoClient,
+        ILogger<AlpacaOhlcvCollector> logger)
     {
-        _client = client;
+        _stockClient = stockClient;
+        _cryptoBarsClient = (IHistoricalBarsClient<HistoricalCryptoBarsRequest>)cryptoClient;
         _logger = logger;
     }
 
@@ -22,15 +28,32 @@ public sealed class AlpacaOhlcvCollector : IAlpacaOhlcvCollector
         BarTimeFrame timeFrame,
         CancellationToken cancellationToken = default)
     {
-        var request = new HistoricalBarsRequest(symbol, fromUtc, toUtc, timeFrame);
-        var result = await _client.GetHistoricalBarsAsync(request, cancellationToken).ConfigureAwait(false);
+        IReadOnlyDictionary<string, IReadOnlyList<IBar>> items;
+        if (symbol.Contains('/'))
+        {
+            var marketType = BarTimeFrameResolver.GetMarketType(timeFrame);
+            // Configure Crypto API call based on Future vs Spot if supported natively
+            var cryptoRequest = new HistoricalCryptoBarsRequest(symbol, fromUtc, toUtc, timeFrame);
+            // Currently Alpaca's .NET SDK may not have a distinct request DTO for futures vs spot so this sets the groundwork.
+            var cryptoResult = await _cryptoBarsClient.GetHistoricalBarsAsync(cryptoRequest, cancellationToken)
+                .ConfigureAwait(false);
+            items = cryptoResult.Items;
+        }
+        else
+        {
+            var stockRequest = new HistoricalBarsRequest(symbol, fromUtc, toUtc, timeFrame);
+            var stockResult = await _stockClient.GetHistoricalBarsAsync(stockRequest, cancellationToken)
+                .ConfigureAwait(false);
+            items = stockResult.Items;
+        }
+
         IReadOnlyList<IBar>? bars = null;
-        if (result.Items.TryGetValue(symbol, out var byKey))
+        if (items.TryGetValue(symbol, out var byKey))
             bars = byKey;
-        else if (result.Items.TryGetValue(symbol.ToUpperInvariant(), out var byUpper))
+        else if (items.TryGetValue(symbol.ToUpperInvariant(), out var byUpper))
             bars = byUpper;
-        else if (result.Items.Count == 1)
-            bars = result.Items.Values.First();
+        else if (items.Count == 1)
+            bars = items.Values.First();
 
         if (bars == null || bars.Count == 0)
         {

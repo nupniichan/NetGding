@@ -11,15 +11,18 @@ public sealed class CollectorWorker : BackgroundService
 {
     private readonly IOptionsMonitor<CollectorOptions> _options;
     private readonly IAlpacaOhlcvCollector _collector;
+    private readonly IHostEnvironment _hostEnvironment;
     private readonly ILogger<CollectorWorker> _logger;
 
     public CollectorWorker(
         IOptionsMonitor<CollectorOptions> options,
         IAlpacaOhlcvCollector collector,
+        IHostEnvironment hostEnvironment,
         ILogger<CollectorWorker> logger)
     {
         _options = options;
         _collector = collector;
+        _hostEnvironment = hostEnvironment;
         _logger = logger;
     }
 
@@ -45,28 +48,40 @@ public sealed class CollectorWorker : BackgroundService
                 continue;
             }
 
+            var boundaryWait = BarTimeFrameResolver.DelayUntilNextBarBoundaryUtc(tf, DateTime.UtcNow);
+            await Task.Delay(boundaryWait, stoppingToken).ConfigureAwait(false);
+
             var toUtc = DateTime.UtcNow;
             var fromUtc = toUtc.AddDays(-Math.Max(1, o.LookbackDays));
-            try
+            var symbols = o.Symbols ?? [];
+            if (symbols.Length == 0)
             {
-                IReadOnlyList<OhlcvBar> bars = await _collector
-                    .CollectAsync(o.Symbol, fromUtc, toUtc, tf, stoppingToken)
-                    .ConfigureAwait(false);
-                var series = new OhlcvSeries(o.Symbol, o.BarTimeFrame, bars);
-                _logger.LogInformation(
-                    "Collector: {Symbol} → {Count} bars ({From:O} … {To:O})",
-                    series.Symbol,
-                    series.Bars.Count,
-                    fromUtc,
-                    toUtc);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Collector: failed for {Symbol}", o.Symbol);
+                _logger.LogWarning("Collector: Symbols is empty; add entries in config.");
             }
 
-            var delay = TimeSpan.FromSeconds(Math.Max(10, o.PollIntervalSeconds));
-            await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+            foreach (var raw in symbols)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+                var symbol = raw.Trim();
+                try
+                {
+                    IReadOnlyList<OhlcvBar> bars = await _collector
+                        .CollectAsync(symbol, fromUtc, toUtc, tf, stoppingToken)
+                        .ConfigureAwait(false);
+                    var series = new OhlcvSeries(symbol, o.BarTimeFrame, bars);
+                    _logger.LogInformation(
+                        "Collector: {Symbol} → {Count} bars ({From:O} … {To:O})",
+                        series.Symbol,
+                        series.Bars.Count,
+                        fromUtc,
+                        toUtc);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Collector: failed for {Symbol}", symbol);
+                }
+            }
         }
     }
 }

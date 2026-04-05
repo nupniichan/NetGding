@@ -19,6 +19,15 @@ builder.Services.AddSingleton<IAlpacaDataClient>(sp =>
         : Alpaca.Markets.Environments.Live.GetAlpacaDataClient(key);
 });
 
+builder.Services.AddSingleton<IAlpacaCryptoDataClient>(sp =>
+{
+    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
+    var key = new SecretKey(o.ApiKey, o.ApiSecret);
+    return o.UsePaper
+        ? Alpaca.Markets.Environments.Paper.GetAlpacaCryptoDataClient(key)
+        : Alpaca.Markets.Environments.Live.GetAlpacaCryptoDataClient(key);
+});
+
 builder.Services.AddSingleton<IAlpacaOhlcvCollector, AlpacaOhlcvCollector>();
 builder.Services.AddHostedService<CollectorWorker>();
 
