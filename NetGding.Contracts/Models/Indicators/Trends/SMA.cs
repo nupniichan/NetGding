@@ -1,4 +1,4 @@
-﻿namespace NetGding.Models.Indicators
+﻿namespace NetGding.Models.Indicators.Trends
 {
     // Simple Moving Average
     public class SMA
