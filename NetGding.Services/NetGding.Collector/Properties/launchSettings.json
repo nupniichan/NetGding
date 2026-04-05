@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "NetGding.Collector": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
