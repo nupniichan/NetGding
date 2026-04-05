@@ -1,3 +1,5 @@
+using NetGding.Models.MarketData;
+
 namespace NetGding.Analyzer.Indicators;
 
 internal static class IndicatorMath
