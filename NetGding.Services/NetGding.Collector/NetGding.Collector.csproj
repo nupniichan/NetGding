@@ -11,10 +11,12 @@
   <ItemGroup>
     <PackageReference Include="Alpaca.Markets" Version="7.1.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\NetGding.Contracts\NetGding.Contracts.csproj" />
+    <ProjectReference Include="..\NetGding.Analyzer\NetGding.Analyzer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

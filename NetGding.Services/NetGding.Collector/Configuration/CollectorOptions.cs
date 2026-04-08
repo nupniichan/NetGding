@@ -16,4 +16,10 @@ public sealed class CollectorOptions
     public bool NewsEnabled { get; set; } = true;
     public int NewsPollingIntervalMinutes { get; set; } = 5;
     public int NewsLookbackHours { get; set; } = 24;
+
+    // AI Analysis settings
+    public bool AnalysisEnabled { get; set; } = true;
+    public string GemmaBaseUrl { get; set; } = ";
+    public string GemmaApiKey { get; set; } = "";
+    public string GemmaModel { get; set; } = "";
 }
