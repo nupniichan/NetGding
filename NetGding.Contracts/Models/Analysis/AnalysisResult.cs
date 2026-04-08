@@ -16,5 +16,7 @@ public sealed class AnalysisResult
     public string Reason { get; set; } = "";
     public string ExpectedHoldTime { get; set; } = "";
     public RiskManagement RiskManagement { get; set; } = new();
+    public string NewsSentiment { get; set; } = "";
+    public string NewsSummary { get; set; } = "";
     public DateTime AnalyzedAtUtc { get; set; }
 }

@@ -112,6 +112,10 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
                     sb.AppendLine($"    {n.Summary[..Math.Min(n.Summary.Length, 200)]}");
             }
             sb.AppendLine();
+            sb.AppendLine("IMPORTANT: Analyze the news articles above to determine their sentiment impact on the asset price.");
+            sb.AppendLine("Consider how positive or negative news may affect short-term and mid-term price movement.");
+            sb.AppendLine("Factor the news sentiment into your trade decision, reason, and risk levels.");
+            sb.AppendLine();
         }
 
         sb.AppendLine("Respond with ONLY a JSON object matching this exact schema:");
@@ -137,16 +141,19 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             "longTermTrend": "uptrend|downtrend|sideways"
         },
         "decision": "buy|sell|wait",
-        "reason": "detailed reason",
+        "reason": "detailed reason combining technical and news analysis",
         "expectedHoldTime": "e.g. 2-4 hours, 1-3 days",
         "riskManagement": {
             "futures": { "entry": 0.0, "stopLoss": 0.0, "takeProfit": 0.0 },
             "spot": { "buyPrice": 0.0, "dcaLevels": [0.0, 0.0] }
         },
+        "newsSentiment": "positive|negative|neutral|none",
+        "newsSummary": "brief summary of how news impacts the trading decision",
         "analyzedAtUtc": "2025-01-01T00:00:00Z"
         }
         """);
         sb.AppendLine("Fill in all indicator values from the data provided above. Provide actionable entry/SL/TP for the given market type.");
+        sb.AppendLine("If news articles are provided, analyze their sentiment and explain their impact on the decision. Set newsSentiment to 'none' if no news is available.");
 
         return sb.ToString();
     }
@@ -282,6 +289,8 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             Indicators = request.Indicators,
             Decision = TradeDecision.Wait,
             Reason = "Analysis unavailable — model response could not be parsed.",
+            NewsSentiment = "none",
+            NewsSummary = "",
             AnalyzedAtUtc = DateTime.UtcNow
         };
     }
