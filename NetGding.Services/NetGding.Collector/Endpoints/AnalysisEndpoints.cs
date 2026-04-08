@@ -14,7 +14,7 @@ public static class AnalysisEndpoints
 
     private static async Task<IResult> HandleOnDemandAsync(
         [FromBody] OnDemandRequest request,
-        IOnDemandAnalyzer analyzer,
+        OnDemandAnalyzer analyzer,
         ILogger<Program> logger,
         CancellationToken ct)
     {
