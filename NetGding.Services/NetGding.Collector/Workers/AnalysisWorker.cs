@@ -1,19 +1,9 @@
-using AlpacaBarTimeFrame = Alpaca.Markets.BarTimeFrame;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NetGding.Analyzer.Gemma;
-using NetGding.Analyzer.Indicators;
 using NetGding.Collector.Alpaca;
-using NetGding.Collector.Configuration;
-using NetGding.Collector.Persistence;
-using NetGding.Contracts.Models.Analysis;
-using NetGding.Contracts.Models.News;
-using NetGding.Models.Indicators.Momentum;
-using NetGding.Models.Indicators.Trends;
-using NetGding.Models.Indicators.Volatility;
-using NetGding.Models.Indicators.Volume;
-using NetGding.Models.MarketData;
+using NetGding.Collector.Services;
+using NetGding.Configurations.Options;
 
 namespace NetGding.Collector.Workers;
 
@@ -22,16 +12,19 @@ public sealed class AnalysisWorker : BackgroundService
     private static readonly TimeSpan CollectionOffset = TimeSpan.FromSeconds(30);
 
     private readonly IOptionsMonitor<CollectorOptions> _options;
-    private readonly IGemmaAnalyzer _gemma;
+    private readonly IOnDemandAnalyzer _analyzer;
+    private readonly IAnalysisPublisher _publisher;
     private readonly ILogger<AnalysisWorker> _logger;
 
     public AnalysisWorker(
         IOptionsMonitor<CollectorOptions> options,
-        IGemmaAnalyzer gemma,
+        IOnDemandAnalyzer analyzer,
+        IAnalysisPublisher publisher,
         ILogger<AnalysisWorker> logger)
     {
         _options = options;
-        _gemma = gemma;
+        _analyzer = analyzer;
+        _publisher = publisher;
         _logger = logger;
     }
 
@@ -58,112 +51,69 @@ public sealed class AnalysisWorker : BackgroundService
                 continue;
             }
 
-            if (!BarTimeFrameResolver.TryResolve(o.BarTimeFrame, out var tf))
-            {
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false);
-                continue;
-            }
-
-            var boundaryWait = BarTimeFrameResolver.DelayUntilNextBarBoundaryUtc(tf, DateTime.UtcNow);
-            await Task.Delay(boundaryWait + CollectionOffset, stoppingToken).ConfigureAwait(false);
-
-            var symbols = o.Symbols ?? [];
-
-            foreach (var raw in symbols)
-            {
-                if (string.IsNullOrWhiteSpace(raw)) continue;
-                var symbol = raw.Trim();
-
-                try
-                {
-                    await AnalyzeSymbolAsync(symbol, o, tf, stoppingToken).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "AnalysisWorker: failed for {Symbol}", symbol);
-                }
-            }
+            break;
         }
-    }
 
-    private async Task AnalyzeSymbolAsync(
-        string symbol,
-        CollectorOptions o,
-        AlpacaBarTimeFrame tf,
-        CancellationToken ct)
-    {
-        var series = await JsonLoader.LoadLatestStructAsync<OhlcvSeries>(
-            o.OutputDirectory, symbol, "ohlcv", _logger).ConfigureAwait(false);
+        if (stoppingToken.IsCancellationRequested) return;
 
-        if (series is not { } s || s.Bars.Count == 0)
+        var opts = _options.CurrentValue;
+        var timeFrames = (opts.BarTimeFrames ?? [])
+            .Where(tf => !string.IsNullOrWhiteSpace(tf))
+            .Select(tf => tf.Trim())
+            .Where(BarTimeFrameResolver.IsAutoScheduled)
+            .ToArray();
+
+        if (timeFrames.Length == 0)
         {
-            _logger.LogWarning("AnalysisWorker: no OHLCV data for {Symbol}, skipping", symbol);
+            _logger.LogWarning("AnalysisWorker: no auto-scheduled BarTimeFrames (>= D1) configured.");
             return;
         }
 
-        var bars = s.Bars;
-        var indicators = ComputeIndicators(bars);
-        var news = await LoadNewsAsync(o.OutputDirectory, symbol).ConfigureAwait(false);
-        var market = ResolveMarket(symbol);
-        var marketType = BarTimeFrameResolver.GetMarketType(tf);
-
-        var request = new AnalysisRequest(
-            symbol, market, marketType, o.BarTimeFrame,
-            bars, indicators, news);
-
-        var result = await _gemma.AnalyzeAsync(request, ct).ConfigureAwait(false);
-
-        _logger.LogInformation(
-            "AnalysisWorker: {Symbol} ({Timeframe}) → Decision={Decision}",
-            symbol, o.BarTimeFrame, result.Decision);
-
-        await JsonPersistence.SaveAsync(
-            o.OutputDirectory, symbol, "analysis", result, _logger).ConfigureAwait(false);
+        await Task.WhenAll(timeFrames.Select(tf => AnalyzeLoopAsync(tf, stoppingToken)))
+            .ConfigureAwait(false);
     }
 
-    private static IndicatorSnapshot ComputeIndicators(IReadOnlyList<OhlcvBar> bars)
+    private async Task AnalyzeLoopAsync(string tfName, CancellationToken stoppingToken)
     {
-        var ema = new EMA();
-        var macd = new MACD();
-        var rsi = new RSI();
-        var bb = new BollingerBands();
-        var atr = new ATR();
-        var vol = new Volume();
-        var vwap = new VWAP();
-
-        TrendCalculator.FillEma(ema, bars);
-        TrendCalculator.FillMacd(macd, bars);
-        MomentumCalculator.FillRsi(rsi, bars);
-        VolatilityCalculator.FillBollingerBands(bb, bars);
-        VolatilityCalculator.FillAtr(atr, bars);
-        VolumeCalculator.FillVolumeMa(vol, bars);
-        VolumeCalculator.FillVwap(vwap, bars);
-
-        return new IndicatorSnapshot
+        if (!BarTimeFrameResolver.TryResolve(tfName, out var tf))
         {
-            Ema = ema.Values,
-            Macd = macd.Values,
-            Rsi = rsi.Values,
-            BollingerBands = bb.Values,
-            Atr = atr.Values,
-            VolumeMa = vol.Values,
-            Vwap = vwap.Values
-        };
-    }
+            _logger.LogError(
+                "AnalysisWorker: invalid BarTimeFrame '{Frame}' (allowed: 1d, 1w, 1m)",
+                tfName);
+            return;
+        }
 
-    private async Task<IReadOnlyList<NewsArticle>> LoadNewsAsync(string outputDir, string symbol)
-    {
-        var collection = await JsonLoader.LoadLatestAsync<NewsCollection>(
-            outputDir, symbol, "news", _logger).ConfigureAwait(false);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var o = _options.CurrentValue;
+            var boundaryWait = BarTimeFrameResolver.DelayUntilNextBarBoundaryUtc(tf, DateTime.UtcNow);
+            await Task.Delay(boundaryWait + CollectionOffset, stoppingToken).ConfigureAwait(false);
 
-        return collection?.Articles ?? [];
-    }
+            var symbols = (o.Symbols ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToArray();
 
-    private static AssetMarket ResolveMarket(string symbol)
-    {
-        if (symbol.Contains('/'))
-            return AssetMarket.Crypto;
+            var delay = TimeSpan.FromSeconds(Math.Max(5, o.AutoAnalysisDelaySeconds));
 
-        return AssetMarket.Stock;
+            for (var i = 0; i < symbols.Length; i++)
+            {
+                if (stoppingToken.IsCancellationRequested) break;
+
+                var symbol = symbols[i];
+                try
+                {
+                    var result = await _analyzer.AnalyzeAsync(symbol, tfName, stoppingToken).ConfigureAwait(false);
+                    await _publisher.PublishAsync(result, stoppingToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "AnalysisWorker: failed for {Symbol} [{TimeFrame}]", symbol, tfName);
+                }
+
+                if (i < symbols.Length - 1)
+                    await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+            }
+        }
     }
 }

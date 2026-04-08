@@ -19,6 +19,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _httpClient;
     private readonly GemmaOptions _options;
     private readonly ILogger<GemmaAnalyzer> _logger;
@@ -160,6 +161,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
 
     private async Task<string> CallChatCompletionAsync(string prompt, CancellationToken ct)
     {
+        const int maxAttempts = 3;
         var url = $"{_options.BaseUrl.TrimEnd('/')}/chat/completions";
 
         var payload = new
@@ -173,29 +175,53 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             temperature = 0.3,
             max_tokens = 2048
         };
+        var payloadJson = JsonSerializer.Serialize(payload);
 
-        var json = JsonSerializer.Serialize(payload);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        };
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+                };
 
-        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
-            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
+                if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+                    request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
 
-        using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+                using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
 
-        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxAttempts)
+                {
+                    var retryAfter = response.Headers.RetryAfter?.Delta
+                        ?? TimeSpan.FromSeconds(Math.Pow(2, attempt) * 10);
 
-        using var doc = JsonDocument.Parse(body);
-        var content = doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
+                    _logger.LogWarning(
+                        "Gemma: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
+                        retryAfter, attempt, maxAttempts);
 
-        return content;
+                    await Task.Delay(retryAfter, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                response.EnsureSuccessStatusCode();
+
+                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(body);
+                return doc.RootElement
+                    .GetProperty("choices")[0]
+                    .GetProperty("message")
+                    .GetProperty("content")
+                    .GetString() ?? "";
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        throw new HttpRequestException("Gemma: max retry attempts exceeded.");
     }
 
     private AnalysisResult ParseResponse(string raw, AnalysisRequest request)

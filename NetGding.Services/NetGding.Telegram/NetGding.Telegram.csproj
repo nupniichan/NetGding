@@ -4,22 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>NetGding.Collector</RootNamespace>
-    <UserSecretsId>netgding-collector-dev</UserSecretsId>
+    <RootNamespace>NetGding.Telegram</RootNamespace>
+    <UserSecretsId>netgding-telegram-dev</UserSecretsId>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Alpaca.Markets" Version="7.1.0" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\NetGding.Contracts\NetGding.Contracts.csproj" />
     <ProjectReference Include="..\..\NetGding.Configurations\NetGding.Configurations.csproj" />
-    <ProjectReference Include="..\NetGding.Analyzer\NetGding.Analyzer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="NetGding.Collector.Tests" />
+    <InternalsVisibleTo Include="NetGding.Telegram.Tests" />
   </ItemGroup>
 
 </Project>

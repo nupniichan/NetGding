@@ -1,11 +1,16 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Gemma;
+using NetGding.Configurations.Bootstrap;
+using NetGding.Configurations.Options;
 using NetGding.Collector.Alpaca;
-using NetGding.Collector.Configuration;
+using NetGding.Collector.Endpoints;
+using NetGding.Collector.Services;
 using NetGding.Collector.Workers;
 
-var builder = Host.CreateApplicationBuilder(args);
+EnvFileLoader.Load();
+
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddOptions<CollectorOptions>()
@@ -32,6 +37,15 @@ builder.Services.AddSingleton<IAlpacaCryptoDataClient>(sp =>
 builder.Services.AddSingleton<IAlpacaOhlcvCollector, AlpacaOhlcvCollector>();
 builder.Services.AddSingleton<IAlpacaNewsCollector, AlpacaNewsCollector>();
 
+builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
+{
+    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(30);
+    if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
+        client.BaseAddress = new Uri(o.WebApiBaseUrl);
+});
+builder.Services.AddSingleton<IAnalysisPublisher, WebApiAnalysisPublisher>();
+
 builder.Services.AddHttpClient<GemmaAnalyzer>();
 builder.Services.AddSingleton<IGemmaAnalyzer>(sp =>
 {
@@ -47,8 +61,14 @@ builder.Services.AddSingleton<IGemmaAnalyzer>(sp =>
     return new GemmaAnalyzer(httpFactory.CreateClient(nameof(GemmaAnalyzer)), gemmaOptions, logger);
 });
 
+builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
+
 builder.Services.AddHostedService<CollectorWorker>();
 builder.Services.AddHostedService<NewsCollectorWorker>();
 builder.Services.AddHostedService<AnalysisWorker>();
 
-await builder.Build().RunAsync().ConfigureAwait(false);
+var app = builder.Build();
+
+app.MapAnalysisEndpoints();
+
+await app.RunAsync().ConfigureAwait(false);

@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Contracts.Models.News;
 using NetGding.Collector.Alpaca;
-using NetGding.Collector.Configuration;
+using NetGding.Configurations.Options;
 using NetGding.Collector.Persistence;
 
 namespace NetGding.Collector.Workers;

@@ -20,6 +20,9 @@ internal static class BarTimeFrameResolver
         };
     }
 
+    public static bool IsAutoScheduled(string tfName) =>
+        tfName.Trim().ToUpperInvariant() is "1D" or "1W" or "1M";
+
     public static bool TryResolve(string? name, out BarTimeFrame timeFrame)
     {
         timeFrame = BarTimeFrame.Hour;
