@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace NetGding.Analyzer.FinBert;
@@ -11,7 +10,6 @@ namespace NetGding.Analyzer.FinBert;
 public sealed class FinBertSentimentAnalyzer : IFinBertSentimentAnalyzer
 {
     private const string ApiUrl = "https://api-inference.huggingface.co/models/ProsusAI/finbert";
-    private const int MaxBatchSize = 32;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<FinBertSentimentAnalyzer> _logger;
@@ -25,84 +23,40 @@ public sealed class FinBertSentimentAnalyzer : IFinBertSentimentAnalyzer
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<SentimentPrediction>> AnalyzeBatchAsync(
-        IReadOnlyList<string> texts,
+    public async Task<SentimentPrediction> AnalyzeAsync(
+        string text,
         CancellationToken cancellationToken = default)
     {
-        var results = new List<SentimentPrediction>(texts.Count);
+        var hash = ComputeHash(text);
 
-        // Separate cached vs uncached
-        var uncachedTexts = new List<(int Index, string Text, string Hash)>();
-        for (int i = 0; i < texts.Count; i++)
+        if (_cache.TryGetValue(hash, out var cached))
         {
-            var hash = ComputeHash(texts[i]);
-            if (_cache.TryGetValue(hash, out var cached))
-            {
-                results.Add(cached);
-            }
-            else
-            {
-                uncachedTexts.Add((i, texts[i], hash));
-                results.Add(null!);
-            }
+            _logger.LogDebug("Cache hit for text hash {Hash}", hash);
+            return cached;
         }
 
-        if (uncachedTexts.Count == 0)
+        try
         {
-            _logger.LogDebug("All {Count} texts found in cache, skipping API call", texts.Count);
-            return results;
+            var prediction = await CallApiAsync(text, cancellationToken)
+                .ConfigureAwait(false);
+
+            _cache.TryAdd(hash, prediction);
+            return prediction;
         }
-
-        _logger.LogDebug("Analyzing {UncachedCount}/{TotalCount} uncached texts via FinBERT",
-            uncachedTexts.Count, texts.Count);
-
-        // Process uncached texts in batches
-        for (int batchStart = 0; batchStart < uncachedTexts.Count; batchStart += MaxBatchSize)
+        catch (Exception ex)
         {
-            var batch = uncachedTexts
-                .Skip(batchStart)
-                .Take(MaxBatchSize)
-                .ToList();
+            _logger.LogError(ex, "FinBERT API call failed for text: {Text}",
+                text.Length > 80 ? text[..80] : text);
 
-            var batchTexts = batch.Select(b => b.Text).ToList();
-
-            try
-            {
-                var predictions = await CallApiAsync(batchTexts, cancellationToken)
-                    .ConfigureAwait(false);
-
-                for (int j = 0; j < predictions.Count && j < batch.Count; j++)
-                {
-                    var pred = predictions[j];
-                    var entry = batch[j];
-
-                    _cache.TryAdd(entry.Hash, pred);
-
-                    results[FindResultIndex(texts, entry.Index)] = pred;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "FinBERT API call failed for batch starting at {Start}", batchStart);
-
-                foreach (var entry in batch)
-                {
-                    var fallback = new SentimentPrediction(entry.Text, SentimentLabel.Neutral, 0f);
-                    results[FindResultIndex(texts, entry.Index)] = fallback;
-                }
-            }
+            return new SentimentPrediction(text, SentimentLabel.Neutral, 0f);
         }
-
-        return results;
     }
 
-    private static int FindResultIndex(IReadOnlyList<string> texts, int originalIndex) => originalIndex;
-
-    private async Task<IReadOnlyList<SentimentPrediction>> CallApiAsync(
-        List<string> texts,
+    private async Task<SentimentPrediction> CallApiAsync(
+        string text,
         CancellationToken cancellationToken)
     {
-        var payload = new { inputs = texts };
+        var payload = new { inputs = text };
 
         var response = await _httpClient.PostAsJsonAsync(ApiUrl, payload, cancellationToken)
             .ConfigureAwait(false);
@@ -112,30 +66,20 @@ public sealed class FinBertSentimentAnalyzer : IFinBertSentimentAnalyzer
         var json = await response.Content.ReadAsStringAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var results = new List<SentimentPrediction>();
-
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
         if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
         {
-            var first = root[0];
-            if (first.ValueKind == JsonValueKind.Array)
-            {
-                for (int i = 0; i < root.GetArrayLength() && i < texts.Count; i++)
-                {
-                    var prediction = ParsePrediction(texts[i], root[i]);
-                    results.Add(prediction);
-                }
-            }
-            else
-            {
-                var prediction = ParsePrediction(texts[0], root);
-                results.Add(prediction);
-            }
+            var labelArray = root[0];
+
+            if (labelArray.ValueKind == JsonValueKind.Array)
+                return ParsePrediction(text, labelArray);
+
+            return ParsePrediction(text, root);
         }
 
-        return results;
+        return new SentimentPrediction(text, SentimentLabel.Neutral, 0f);
     }
 
     private static SentimentPrediction ParsePrediction(string text, JsonElement labelArray)

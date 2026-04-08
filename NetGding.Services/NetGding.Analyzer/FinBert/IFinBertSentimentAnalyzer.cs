@@ -14,7 +14,7 @@ public sealed record SentimentPrediction(
 
 public interface IFinBertSentimentAnalyzer
 {
-    Task<IReadOnlyList<SentimentPrediction>> AnalyzeBatchAsync(
-        IReadOnlyList<string> texts,
+    Task<SentimentPrediction> AnalyzeAsync(
+        string text,
         CancellationToken cancellationToken = default);
 }

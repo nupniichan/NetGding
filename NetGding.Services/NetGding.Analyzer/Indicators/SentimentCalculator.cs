@@ -29,16 +29,14 @@ public static class SentimentCalculator
             .Where(h => !string.IsNullOrWhiteSpace(h))
             .ToList();
 
-        var predictions = await analyzer
-            .AnalyzeBatchAsync(headlines, cancellationToken)
-            .ConfigureAwait(false);
-
         float totalScore = 0f;
         int scored = 0;
 
-        for (int i = 0; i < predictions.Count; i++)
+        foreach (var headline in headlines)
         {
-            var pred = predictions[i];
+            var pred = await analyzer
+                .AnalyzeAsync(headline, cancellationToken)
+                .ConfigureAwait(false);
 
             float signedScore = pred.Label switch
             {
