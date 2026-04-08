@@ -23,7 +23,7 @@ public sealed class AlpacaNewsCollector : IAlpacaNewsCollector
         DateTime toUtc,
         CancellationToken cancellationToken = default)
     {
-        var request = new NewsArticlesRequest(symbol)
+        var request = new NewsArticlesRequest([symbol])
         {
             TimeInterval = new Interval<DateTime>(fromUtc, toUtc),
             SortDirection = SortDirection.Descending
