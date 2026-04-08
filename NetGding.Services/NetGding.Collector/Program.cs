@@ -29,6 +29,8 @@ builder.Services.AddSingleton<IAlpacaCryptoDataClient>(sp =>
 });
 
 builder.Services.AddSingleton<IAlpacaOhlcvCollector, AlpacaOhlcvCollector>();
+builder.Services.AddSingleton<IAlpacaNewsCollector, AlpacaNewsCollector>();
 builder.Services.AddHostedService<CollectorWorker>();
+builder.Services.AddHostedService<NewsCollectorWorker>();
 
 await builder.Build().RunAsync().ConfigureAwait(false);

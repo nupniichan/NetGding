@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using NetGding.Models.MarketData;
 using NetGding.Collector.Alpaca;
 using NetGding.Collector.Configuration;
+using NetGding.Collector.Persistence;
 
 namespace NetGding.Collector.Workers;
 
@@ -76,6 +77,11 @@ public sealed class CollectorWorker : BackgroundService
                         series.Bars.Count,
                         fromUtc,
                         toUtc);
+
+                    // Persist OHLCV data to JSON
+                    await JsonPersistence.SaveAsync(
+                        o.OutputDirectory, symbol, "ohlcv", series, _logger)
+                        .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -84,4 +90,4 @@ public sealed class CollectorWorker : BackgroundService
             }
         }
     }
-}
+}

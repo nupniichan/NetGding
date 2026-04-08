@@ -11,4 +11,9 @@ public sealed class CollectorOptions
     public string BarTimeFrame { get; set; } = "1h";
     public int LookbackDays { get; set; } = 5;
     public string OutputDirectory { get; set; } = "";
+
+    // News settings
+    public bool NewsEnabled { get; set; } = true;
+    public int NewsPollingIntervalMinutes { get; set; } = 5;
+    public int NewsLookbackHours { get; set; } = 24;
 }
