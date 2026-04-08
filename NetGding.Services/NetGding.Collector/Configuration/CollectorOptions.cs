@@ -19,7 +19,7 @@ public sealed class CollectorOptions
 
     // AI Analysis settings
     public bool AnalysisEnabled { get; set; } = true;
-    public string GemmaBaseUrl { get; set; } = ";
+    public string GemmaBaseUrl { get; set; } = "";
     public string GemmaApiKey { get; set; } = "";
     public string GemmaModel { get; set; } = "";
 }
