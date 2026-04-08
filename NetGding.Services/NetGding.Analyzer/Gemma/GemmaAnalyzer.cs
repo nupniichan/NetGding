@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Contracts.Models.Analysis;
+using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Analyzer.Gemma;
