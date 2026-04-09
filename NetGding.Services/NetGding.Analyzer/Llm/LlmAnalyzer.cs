@@ -40,22 +40,12 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
     {
         var prompt = BuildPrompt(request);
 
-        try
-        {
-            var raw = await CallChatCompletionAsync(prompt, cancellationToken)
-                .ConfigureAwait(false);
+        var raw = await CallChatCompletionAsync(prompt, cancellationToken)
+            .ConfigureAwait(false);
 
-            var result = ParseResponse(raw, request);
-            result.AnalyzedAtUtc = DateTime.UtcNow;
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "LLM analysis failed for {Symbol} ({Timeframe})",
-                request.Symbol, request.Timeframe);
-
-            return FallbackResult(request);
-        }
+        var result = ParseResponse(raw, request);
+        result.AnalyzedAtUtc = DateTime.UtcNow;
+        return result;
     }
 
     private string BuildPrompt(AnalysisRequest req)
@@ -297,26 +287,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             }
         }
 
-        _logger.LogWarning("Could not parse LLM response, returning fallback");
-        return FallbackResult(request);
-    }
-
-    private static AnalysisResult FallbackResult(AnalysisRequest request)
-    {
-        var price = request.Bars.Count > 0 ? (decimal)request.Bars[^1].Close : 0m;
-        return new AnalysisResult
-        {
-            Symbol = request.Symbol,
-            Market = request.Market,
-            MarketType = request.MarketType,
-            Timeframe = request.Timeframe,
-            CurrentPrice = price,
-            Indicators = request.Indicators,
-            Decision = TradeDecision.Wait,
-            Reason = "Analysis unavailable — model response could not be parsed.",
-            NewsSentiment = "none",
-            NewsSummary = "",
-            AnalyzedAtUtc = DateTime.UtcNow
-        };
+        throw new InvalidOperationException(
+            $"Could not parse LLM response for {request.Symbol} ({request.Timeframe}).");
     }
 }
