@@ -199,7 +199,30 @@ public sealed class BotPollingService : BackgroundService
 
         try
         {
-            var result = await FetchOnDemandAnalysisAsync(symbol, timeframe, ct).ConfigureAwait(false);
+            var symbolCandidates = symbol.Contains('/', StringComparison.Ordinal)
+                ? [symbol]
+                : symbol.EndsWith("/USD", StringComparison.OrdinalIgnoreCase)
+                    ? [symbol]
+                    : new[] { symbol, $"{symbol}/USD" };
+
+            AnalysisResult? result = null;
+            Exception? lastError = null;
+
+            foreach (var candidate in symbolCandidates)
+            {
+                try
+                {
+                    result = await FetchOnDemandAnalysisAsync(candidate, timeframe, ct).ConfigureAwait(false);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                }
+            }
+
+            if (result is null)
+                throw lastError ?? new InvalidOperationException("On-demand analysis failed.");
 
             _store.Store(result);
             var message = _formatter.Build(result);
@@ -263,7 +286,7 @@ public sealed class BotPollingService : BackgroundService
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
         "\\- /analyze `<symbol>` `<timeframe>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
         "Examples:\n" +
-        "  /analyze BTC/USD 4h\n" +
+        "  /analyze BTC 4h\n" +
         "  /latest BTC/USD\n\n" +
         "D1\\+ analysis results are still pushed automatically after each bar\\.";
 
