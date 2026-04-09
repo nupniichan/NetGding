@@ -90,7 +90,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             sb.AppendLine();
         }
 
-        sb.AppendLine("Indicators:");
+        sb.AppendLine("PRE-COMPUTED Indicators (calculated from full historical dataset — copy these EXACT values into the indicators field, do NOT recalculate from OHLCV bars above):");
         AppendIndicatorDict(sb, "EMA", req.Indicators.Ema);
         AppendIndicatorDict(sb, "MACD", req.Indicators.Macd);
         AppendIndicatorDict(sb, "RSI", req.Indicators.Rsi);
@@ -118,45 +118,70 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             sb.AppendLine();
         }
 
-        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema:");
-        sb.AppendLine($$"""
-        {
-        "symbol": "{{req.Symbol}}",
-        "market": "stock|crypto|forex",
-        "marketType": "future|spot",
-        "timeframe": "{{req.Timeframe}}",
-        "currentPrice": 0.0,
-        "indicators": {
-            "ema": {"9": 0.0, "21": 0.0},
-            "macd": {"Line": 0.0, "Signal": 0.0, "Histogram": 0.0},
-            "rsi": {"14": 0.0},
-            "bollingerBands": {"Upper": 0.0, "Middle": 0.0, "Lower": 0.0},
-            "atr": {"14": 0.0},
-            "volumeMa": {"20": 0.0},
-            "vwap": {"VWAP": 0.0}
-        },
-        "marketStructure": {
-            "shortTermTrend": "uptrend|downtrend|sideways",
-            "midTermTrend": "uptrend|downtrend|sideways",
-            "longTermTrend": "uptrend|downtrend|sideways"
-        },
-        "decision": "buy|sell|wait",
-        "reason": "detailed reason combining technical and news analysis",
-        "expectedHoldTime": "e.g. 2-4 hours, 1-3 days",
-        "riskManagement": {
-            "futures": { "entry": 0.0, "stopLoss": 0.0, "takeProfit": 0.0 },
-            "spot": { "buyPrice": 0.0, "dcaLevels": [0.0, 0.0] }
-        },
-        "newsSentiment": "positive|negative|neutral|none",
-        "newsSummary": "brief summary of how news impacts the trading decision",
-        "analyzedAtUtc": "2025-01-01T00:00:00Z"
-        }
-        """);
-        sb.AppendLine("Fill in all indicator values from the data provided above. Provide actionable entry/SL/TP for the given market type.");
+        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema (the indicator values shown are the pre-computed values you MUST use):");
+        sb.AppendLine("{");
+        sb.AppendLine($"  \"symbol\": \"{req.Symbol}\",");
+        sb.AppendLine("  \"market\": \"stock|crypto|forex\",");
+        sb.AppendLine("  \"marketType\": \"future|spot\",");
+        sb.AppendLine($"  \"timeframe\": \"{req.Timeframe}\",");
+        sb.AppendLine("  \"currentPrice\": 0.0,");
+        sb.Append("  \"indicators\": ");
+        sb.AppendLine(BuildIndicatorSchema(req.Indicators) + ",");
+        sb.AppendLine("  \"marketStructure\": {");
+        sb.AppendLine("    \"shortTermTrend\": \"uptrend|downtrend|sideways\",");
+        sb.AppendLine("    \"midTermTrend\": \"uptrend|downtrend|sideways\",");
+        sb.AppendLine("    \"longTermTrend\": \"uptrend|downtrend|sideways\"");
+        sb.AppendLine("  },");
+        sb.AppendLine("  \"decision\": \"buy|sell|wait\",");
+        sb.AppendLine("  \"reason\": \"detailed reason combining technical and news analysis\",");
+        sb.AppendLine($"  \"expectedHoldTime\": \"{ResolveHoldTimeHint(req.Timeframe)}\",");
+        sb.AppendLine("  \"riskManagement\": {");
+        sb.AppendLine("    \"futures\": { \"entry\": 0.0, \"stopLoss\": 0.0, \"takeProfit\": 0.0 },");
+        sb.AppendLine("    \"spot\": { \"buyPrice\": 0.0, \"dcaLevels\": [0.0, 0.0] }");
+        sb.AppendLine("  },");
+        sb.AppendLine("  \"newsSentiment\": \"positive|negative|neutral|none\",");
+        sb.AppendLine("  \"newsSummary\": \"brief summary of how news impacts the trading decision\",");
+        sb.AppendLine("  \"analyzedAtUtc\": \"2025-01-01T00:00:00Z\"");
+        sb.AppendLine("}");
+        sb.AppendLine("Provide actionable entry/SL/TP for the given market type.");
         sb.AppendLine("If news articles are provided, analyze their sentiment and explain their impact on the decision. Set newsSentiment to 'none' if no news is available.");
 
         return sb.ToString();
     }
+
+    private static string BuildIndicatorSchema(IndicatorSnapshot indicators)
+    {
+        var sections = new List<string>();
+        AppendIndicatorSchemaSection(sections, "ema", indicators.Ema);
+        AppendIndicatorSchemaSection(sections, "macd", indicators.Macd);
+        AppendIndicatorSchemaSection(sections, "rsi", indicators.Rsi);
+        AppendIndicatorSchemaSection(sections, "bollingerBands", indicators.BollingerBands);
+        AppendIndicatorSchemaSection(sections, "atr", indicators.Atr);
+        AppendIndicatorSchemaSection(sections, "volumeMa", indicators.VolumeMa);
+        AppendIndicatorSchemaSection(sections, "vwap", indicators.Vwap);
+
+        return "{\n    " + string.Join(",\n    ", sections) + "\n  }";
+    }
+
+    private static void AppendIndicatorSchemaSection(List<string> sections, string key, Dictionary<string, float> dict)
+    {
+        if (dict.Count == 0) return;
+        var entries = string.Join(", ", dict.Select(kv =>
+            $"\"{kv.Key}\": {kv.Value.ToString(CultureInfo.InvariantCulture)}"));
+        sections.Add($"\"{key}\": {{{entries}}}");
+    }
+
+    private static string ResolveHoldTimeHint(string timeframe) =>
+        timeframe.ToLowerInvariant() switch
+        {
+            "15m" or "15min" => "1-4 hours",
+            "1h" or "1hour" or "60m" => "4-12 hours",
+            "4h" or "4hour" or "240m" => "1-3 days",
+            "1d" or "1day" or "d" => "3-14 days",
+            "1w" or "1week" or "w" => "2-8 weeks",
+            "1m" or "1month" or "mo" => "1-6 months",
+            _ => "depends on timeframe"
+        };
 
     private static void AppendIndicatorDict(StringBuilder sb, string name, Dictionary<string, float> dict)
     {
