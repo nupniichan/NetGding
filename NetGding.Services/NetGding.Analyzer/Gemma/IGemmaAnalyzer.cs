@@ -1,7 +1,6 @@
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.MarketData;
 using NetGding.Contracts.Models.News;
-using NetGding.Models.MarketData;
 using NetGding.Contracts.Models.Analysis.Enums;
 
 namespace NetGding.Analyzer.Gemma;

@@ -1,4 +1,4 @@
-using NetGding.Models.MarketData;
+using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Analyzer.Indicators;
 

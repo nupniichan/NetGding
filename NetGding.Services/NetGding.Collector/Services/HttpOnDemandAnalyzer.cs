@@ -57,6 +57,4 @@ public sealed class HttpOnDemandAnalyzer : IOnDemandAnalyzer
         throw new InvalidOperationException(
             $"Collector: all retries failed for HTTP on-demand analysis ({symbol}, {timeframe}).");
     }
-
-    private sealed record OnDemandRequest(string Symbol, string Timeframe);
 }

@@ -11,7 +11,7 @@ using NetGding.Models.Indicators.Momentum;
 using NetGding.Models.Indicators.Trends;
 using NetGding.Models.Indicators.Volatility;
 using NetGding.Models.Indicators.Volume;
-using NetGding.Models.MarketData;
+using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Collector.Services;
 

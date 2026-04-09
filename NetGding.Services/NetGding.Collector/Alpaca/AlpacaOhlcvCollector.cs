@@ -1,14 +1,13 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Logging;
 using NetGding.Contracts.Models.MarketData;
-using NetGding.Models.MarketData;
 
 namespace NetGding.Collector.Alpaca;
 
 public sealed class AlpacaOhlcvCollector : IAlpacaOhlcvCollector
 {
     private readonly IAlpacaDataClient _stockClient;
-    private readonly IHistoricalBarsClient<HistoricalCryptoBarsRequest> _cryptoBarsClient;
+    private readonly IAlpacaCryptoDataClient _cryptoClient;
     private readonly ILogger<AlpacaOhlcvCollector> _logger;
 
     public AlpacaOhlcvCollector(
@@ -17,7 +16,7 @@ public sealed class AlpacaOhlcvCollector : IAlpacaOhlcvCollector
         ILogger<AlpacaOhlcvCollector> logger)
     {
         _stockClient = stockClient;
-        _cryptoBarsClient = (IHistoricalBarsClient<HistoricalCryptoBarsRequest>)cryptoClient;
+        _cryptoClient = cryptoClient;
         _logger = logger;
     }
 
@@ -32,10 +31,8 @@ public sealed class AlpacaOhlcvCollector : IAlpacaOhlcvCollector
         if (symbol.Contains('/'))
         {
             var marketType = BarTimeFrameResolver.GetMarketType(timeFrame);
-            // Configure Crypto API call based on Future vs Spot if supported natively
             var cryptoRequest = new HistoricalCryptoBarsRequest(symbol, fromUtc, toUtc, timeFrame);
-            // Currently Alpaca's .NET SDK may not have a distinct request DTO for futures vs spot so this sets the groundwork.
-            var cryptoResult = await _cryptoBarsClient.GetHistoricalBarsAsync(cryptoRequest, cancellationToken)
+            var cryptoResult = await _cryptoClient.GetHistoricalBarsAsync(cryptoRequest, cancellationToken)
                 .ConfigureAwait(false);
             items = cryptoResult.Items;
         }

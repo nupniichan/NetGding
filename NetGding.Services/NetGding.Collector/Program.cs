@@ -44,13 +44,6 @@ builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
     if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
         client.BaseAddress = new Uri(o.WebApiBaseUrl);
 });
-builder.Services.AddHttpClient(nameof(HttpOnDemandAnalyzer), (sp, client) =>
-{
-    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(30);
-    if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        client.BaseAddress = new Uri(o.WebApiBaseUrl);
-});
 builder.Services.AddSingleton<IAnalysisPublisher, WebApiAnalysisPublisher>();
 
 builder.Services.AddHttpClient<GemmaAnalyzer>();
@@ -68,8 +61,7 @@ builder.Services.AddSingleton<IGemmaAnalyzer>(sp =>
     return new GemmaAnalyzer(httpFactory.CreateClient(nameof(GemmaAnalyzer)), gemmaOptions, logger);
 });
 
-builder.Services.AddSingleton<OnDemandAnalyzer>();
-builder.Services.AddSingleton<IOnDemandAnalyzer, HttpOnDemandAnalyzer>();
+builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
 
 builder.Services.AddHostedService<CollectorWorker>();
 builder.Services.AddHostedService<NewsCollectorWorker>();

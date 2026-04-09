@@ -27,7 +27,8 @@ public sealed class TelegramForwarder : ITelegramForwarder
         var o = _options.CurrentValue;
         var url = $"{o.TelegramServiceUrl.TrimEnd('/')}/internal/telegram/notify";
 
-        for (var attempt = 1; attempt <= o.MaxRetries; attempt++)
+        var maxRetries = Math.Max(1, o.MaxRetries);
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
@@ -36,11 +37,11 @@ public sealed class TelegramForwarder : ITelegramForwarder
                 response.EnsureSuccessStatusCode();
                 return;
             }
-            catch (Exception ex) when (attempt < o.MaxRetries)
+            catch (Exception ex) when (attempt < maxRetries)
             {
                 _logger.LogWarning(ex,
                     "TelegramForwarder: attempt {Attempt}/{MaxRetries} failed for {Symbol}",
-                    attempt, o.MaxRetries, result.Symbol);
+                    attempt, maxRetries, result.Symbol);
 
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct).ConfigureAwait(false);
             }

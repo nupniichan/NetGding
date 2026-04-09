@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using NetGding.Collector.Services;
+using NetGding.Contracts.Models.Analysis;
 
 namespace NetGding.Collector.Endpoints;
 
@@ -14,7 +15,7 @@ public static class AnalysisEndpoints
 
     private static async Task<IResult> HandleOnDemandAsync(
         [FromBody] OnDemandRequest request,
-        OnDemandAnalyzer analyzer,
+        IOnDemandAnalyzer analyzer,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -40,5 +41,3 @@ public static class AnalysisEndpoints
         }
     }
 }
-
-public sealed record OnDemandRequest(string Symbol, string Timeframe);

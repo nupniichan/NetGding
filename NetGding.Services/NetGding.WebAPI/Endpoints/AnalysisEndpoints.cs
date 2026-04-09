@@ -95,5 +95,3 @@ public static class AnalysisEndpoints
         }
     }
 }
-
-public sealed record OnDemandRequest(string Symbol, string Timeframe);
