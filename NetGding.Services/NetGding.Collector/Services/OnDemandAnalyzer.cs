@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NetGding.Analyzer.Gemma;
+using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Indicators;
 using NetGding.Collector.Alpaca;
 using NetGding.Configurations.Options;
@@ -20,20 +20,20 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly IOptionsMonitor<CollectorOptions> _options;
     private readonly IAlpacaOhlcvCollector _ohlcvCollector;
     private readonly IAlpacaNewsCollector _newsCollector;
-    private readonly IGemmaAnalyzer _gemma;
+    private readonly ILlmAnalyzer _llm;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
         IOptionsMonitor<CollectorOptions> options,
         IAlpacaOhlcvCollector ohlcvCollector,
         IAlpacaNewsCollector newsCollector,
-        IGemmaAnalyzer gemma,
+        ILlmAnalyzer llm,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
         _ohlcvCollector = ohlcvCollector;
         _newsCollector = newsCollector;
-        _gemma = gemma;
+        _llm = llm;
         _logger = logger;
     }
 
@@ -66,7 +66,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         var marketType = BarTimeFrameResolver.GetMarketType(tf);
 
         var request = new AnalysisRequest(symbol, market, marketType, timeframe, bars, indicators, news);
-        var result = await _gemma.AnalyzeAsync(request, ct).ConfigureAwait(false);
+        var result = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
         result.AnalyzedAtUtc = DateTime.UtcNow;
 
         _logger.LogInformation(

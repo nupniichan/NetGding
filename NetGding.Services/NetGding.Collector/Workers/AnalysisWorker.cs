@@ -42,10 +42,10 @@ public sealed class AnalysisWorker : BackgroundService
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(o.GemmaApiKey) &&
-                o.GemmaBaseUrl.Contains("openrouter", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(o.LlmApiKey) &&
+                o.LlmBaseUrl.Contains("openrouter", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning("AnalysisWorker: GemmaApiKey is required for OpenRouter.");
+                _logger.LogWarning("AnalysisWorker: LlmApiKey is required for OpenRouter.");
                 await Task.Delay(TimeSpan.FromMinutes(o.AnalysisIdlePollMinutes), stoppingToken).ConfigureAwait(false);
                 continue;
             }

@@ -8,9 +8,9 @@ using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
 
-namespace NetGding.Analyzer.Gemma;
+namespace NetGding.Analyzer.Llm;
 
-public sealed class GemmaAnalyzer : IGemmaAnalyzer
+public sealed class LlmAnalyzer : ILlmAnalyzer
 {
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -21,13 +21,13 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _httpClient;
-    private readonly GemmaOptions _options;
-    private readonly ILogger<GemmaAnalyzer> _logger;
+    private readonly LlmOptions _options;
+    private readonly ILogger<LlmAnalyzer> _logger;
 
-    public GemmaAnalyzer(
+    public LlmAnalyzer(
         HttpClient httpClient,
-        IOptions<GemmaOptions> options,
-        ILogger<GemmaAnalyzer> logger)
+        IOptions<LlmOptions> options,
+        ILogger<LlmAnalyzer> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
@@ -51,7 +51,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Gemma analysis failed for {Symbol} ({Timeframe})",
+            _logger.LogError(ex, "LLM analysis failed for {Symbol} ({Timeframe})",
                 request.Symbol, request.Timeframe);
 
             return FallbackResult(request);
@@ -230,7 +230,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
                         ?? TimeSpan.FromSeconds(Math.Pow(2, attempt) * 10);
 
                     _logger.LogWarning(
-                        "Gemma: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
+                        "LLM: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
                         retryAfter, attempt, maxAttempts);
 
                     await Task.Delay(retryAfter, ct).ConfigureAwait(false);
@@ -253,7 +253,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             _gate.Release();
         }
 
-        throw new HttpRequestException("Gemma: max retry attempts exceeded.");
+        throw new HttpRequestException("LLM: max retry attempts exceeded.");
     }
 
     private AnalysisResult ParseResponse(string raw, AnalysisRequest request)
@@ -280,7 +280,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse Gemma JSON response, attempting extraction");
+            _logger.LogWarning(ex, "Failed to parse LLM JSON response, attempting extraction");
         }
 
         var start = trimmed.IndexOf('{');
@@ -297,7 +297,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
             }
         }
 
-        _logger.LogWarning("Could not parse Gemma response, returning fallback");
+        _logger.LogWarning("Could not parse LLM response, returning fallback");
         return FallbackResult(request);
     }
 

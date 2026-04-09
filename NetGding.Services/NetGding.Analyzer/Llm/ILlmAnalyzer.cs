@@ -1,9 +1,9 @@
 using NetGding.Contracts.Models.Analysis;
+using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
 using NetGding.Contracts.Models.News;
-using NetGding.Contracts.Models.Analysis.Enums;
 
-namespace NetGding.Analyzer.Gemma;
+namespace NetGding.Analyzer.Llm;
 
 public sealed record AnalysisRequest(
     string Symbol,
@@ -14,7 +14,7 @@ public sealed record AnalysisRequest(
     IndicatorSnapshot Indicators,
     IReadOnlyList<NewsArticle> News);
 
-public interface IGemmaAnalyzer
+public interface ILlmAnalyzer
 {
     Task<AnalysisResult> AnalyzeAsync(
         AnalysisRequest request,

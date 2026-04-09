@@ -1,6 +1,6 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
-using NetGding.Analyzer.Gemma;
+using NetGding.Analyzer.Llm;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Collector.Alpaca;
@@ -46,19 +46,19 @@ builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
 });
 builder.Services.AddSingleton<IAnalysisPublisher, WebApiAnalysisPublisher>();
 
-builder.Services.AddHttpClient<GemmaAnalyzer>();
-builder.Services.AddSingleton<IGemmaAnalyzer>(sp =>
+builder.Services.AddHttpClient<LlmAnalyzer>();
+builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    var gemmaOptions = Options.Create(new GemmaOptions
+    var llmOptions = Options.Create(new LlmOptions
     {
-        BaseUrl = o.GemmaBaseUrl,
-        ApiKey = o.GemmaApiKey,
-        ModelName = o.GemmaModel
+        BaseUrl = o.LlmBaseUrl,
+        ApiKey = o.LlmApiKey,
+        ModelName = o.LlmModel
     });
     var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var logger = sp.GetRequiredService<ILogger<GemmaAnalyzer>>();
-    return new GemmaAnalyzer(httpFactory.CreateClient(nameof(GemmaAnalyzer)), gemmaOptions, logger);
+    var logger = sp.GetRequiredService<ILogger<LlmAnalyzer>>();
+    return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), llmOptions, logger);
 });
 
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();

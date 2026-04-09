@@ -1,8 +1,8 @@
-namespace NetGding.Analyzer.Gemma;
+namespace NetGding.Analyzer.Llm;
 
-public sealed class GemmaOptions
+public sealed class LlmOptions
 {
-    public const string SectionName = "Gemma";
+    public const string SectionName = "Llm";
 
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
     public string ApiKey { get; set; } = "";

@@ -15,9 +15,9 @@ public sealed class CollectorOptions
     public int NewsPollingIntervalMinutes { get; set; } = 5;
     public int NewsLookbackHours { get; set; } = 24;
     public bool AnalysisEnabled { get; set; } = true;
-    public string GemmaBaseUrl { get; set; } = "";
-    public string GemmaApiKey { get; set; } = "";
-    public string GemmaModel { get; set; } = "";
+    public string LlmBaseUrl { get; set; } = "";
+    public string LlmApiKey { get; set; } = "";
+    public string LlmModel { get; set; } = "";
     public bool WebApiPublishEnabled { get; set; }
     public string WebApiBaseUrl { get; set; } = "http://localhost:5001";
     public int WebApiHttpTimeoutSeconds { get; set; } = 30;
