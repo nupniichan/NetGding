@@ -12,13 +12,33 @@ builder.Services
     .AddOptions<WebApiOptions>()
     .BindConfiguration(WebApiOptions.SectionName);
 
+builder.Services
+    .AddOptions<CollectorOptions>()
+    .BindConfiguration(CollectorOptions.SectionName);
+
 builder.Services.AddHttpClient(nameof(TelegramForwarder), (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
     client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
 });
 
+builder.Services.AddHttpClient(nameof(CollectorGateway), (sp, client) =>
+{
+    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
+});
+
+builder.Services.AddHttpClient("HealthProbe", (sp, client) =>
+{
+    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(o.HealthTimeoutSeconds);
+});
+
 builder.Services.AddSingleton<ITelegramForwarder, TelegramForwarder>();
+builder.Services.AddSingleton<ICollectorGateway, CollectorGateway>();
+builder.Services.AddSingleton<IAnalysisResultStore, InMemoryAnalysisResultStore>();
+builder.Services.AddSingleton<ISymbolMetadataProvider, SymbolMetadataProvider>();
+builder.Services.AddSingleton<INewsProvider, FileSystemNewsProvider>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -39,5 +59,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapAnalysisEndpoints();
+app.MapSupportEndpoints();
+app.MapHealthEndpoints();
+app.MapIndicatorEndpoints();
+app.MapNewsEndpoints();
 
 await app.RunAsync().ConfigureAwait(false);

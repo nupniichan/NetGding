@@ -1,8 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
 using NetGding.Contracts.Models.Analysis;
-using NetGding.Configurations.Options;
 using NetGding.WebApi.Services;
 
 namespace NetGding.WebApi.Endpoints;
@@ -18,56 +15,43 @@ public static class AnalysisEndpoints
         app.MapPost("/api/analysis/publish", HandlePublishAsync)
            .WithName("PublishAnalysis")
            .WithTags("Analysis");
+
+        app.MapGet("/api/analysis/latest/{symbol}", HandleGetLatestAsync)
+           .WithName("GetLatestAnalysis")
+           .WithTags("Analysis");
+
+        app.MapGet("/api/analysis/history/{symbol}", HandleGetHistoryAsync)
+           .WithName("GetAnalysisHistory")
+           .WithTags("Analysis");
     }
 
     private static async Task<IResult> HandleOnDemandAsync(
         [FromBody] OnDemandRequest request,
-        IHttpClientFactory httpFactory,
-        IOptionsMonitor<WebApiOptions> options,
+        ICollectorGateway collectorGateway,
+        IAnalysisResultStore analysisResultStore,
         ILogger<Program> logger,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Symbol) || string.IsNullOrWhiteSpace(request.Timeframe))
             return Results.BadRequest("Symbol and Timeframe are required.");
 
-        var o = options.CurrentValue;
-        var url = $"{o.CollectorServiceUrl.TrimEnd('/')}/api/analysis/on-demand";
-
-        for (var attempt = 1; attempt <= o.MaxRetries; attempt++)
+        var normalizedRequest = new OnDemandRequest(request.Symbol.Trim(), request.Timeframe.Trim());
+        var result = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
+        if (result is null)
         {
-            try
-            {
-                var http = httpFactory.CreateClient(nameof(TelegramForwarder));
-                var response = await http.PostAsJsonAsync(url, request, ct).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-
-                var result = await response.Content.ReadFromJsonAsync<AnalysisResult>(cancellationToken: ct)
-                    .ConfigureAwait(false);
-
-                return result is null ? Results.StatusCode(502) : Results.Ok(result);
-            }
-            catch (Exception ex) when (attempt < o.MaxRetries)
-            {
-                logger.LogWarning(ex,
-                    "On-demand proxy: attempt {Attempt}/{MaxRetries} failed for {Symbol} ({Timeframe})",
-                    attempt, o.MaxRetries, request.Symbol, request.Timeframe);
-
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "On-demand proxy failed for {Symbol} ({Timeframe})",
-                    request.Symbol, request.Timeframe);
-                return Results.StatusCode(502);
-            }
+            logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe})",
+                normalizedRequest.Symbol, normalizedRequest.Timeframe);
+            return Results.StatusCode(502);
         }
 
-        return Results.StatusCode(502);
+        analysisResultStore.Store(result);
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> HandlePublishAsync(
         [FromBody] AnalysisResult result,
         ITelegramForwarder forwarder,
+        IAnalysisResultStore analysisResultStore,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -80,6 +64,7 @@ public static class AnalysisEndpoints
 
         try
         {
+            analysisResultStore.Store(result);
             await forwarder.ForwardAsync(result, ct).ConfigureAwait(false);
 
             logger.LogInformation(
@@ -93,5 +78,51 @@ public static class AnalysisEndpoints
             logger.LogError(ex, "Failed to forward analysis for {Symbol}", result.Symbol);
             return Results.StatusCode(502);
         }
+    }
+
+    private static IResult HandleGetLatestAsync(
+        [FromRoute] string symbol,
+        [FromQuery] string timeframe,
+        IAnalysisResultStore analysisResultStore)
+    {
+        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(timeframe))
+            return Results.BadRequest("Symbol and timeframe are required.");
+
+        var latest = analysisResultStore.GetLatest(symbol, timeframe);
+        return latest is null ? Results.NotFound() : Results.Ok(latest);
+    }
+
+    private static IResult HandleGetHistoryAsync(
+        [FromRoute] string symbol,
+        [FromQuery] string timeframe,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        IAnalysisResultStore analysisResultStore)
+    {
+        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(timeframe))
+            return Results.BadRequest("Symbol and timeframe are required.");
+
+        var normalizedPage = page <= 0 ? 1 : page;
+        var normalizedPageSize = pageSize <= 0 ? 20 : Math.Min(pageSize, 200);
+
+        var items = analysisResultStore.GetHistory(
+            symbol,
+            timeframe,
+            from,
+            to,
+            normalizedPage,
+            normalizedPageSize);
+
+        return Results.Ok(new
+        {
+            Symbol = symbol.Trim(),
+            Timeframe = timeframe.Trim(),
+            Page = normalizedPage,
+            PageSize = normalizedPageSize,
+            Count = items.Count,
+            Items = items
+        });
     }
 }

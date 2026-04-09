@@ -17,7 +17,11 @@ public static class EnvFileLoader
             ["MarketData_OutputDirectory"] = (CollectorOptions.SectionName, nameof(CollectorOptions.OutputDirectory)),
             ["Telegram_BotToken"] = (TelegramOptions.SectionName, nameof(TelegramOptions.BotToken)),
             ["Telegram_ChatId"] = (TelegramOptions.SectionName, nameof(TelegramOptions.ChatId)),
-            ["WebApi_TelegramServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.TelegramServiceUrl))
+            ["WebApi_TelegramServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.TelegramServiceUrl)),
+            ["WebApi_CollectorServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.CollectorServiceUrl)),
+            ["WebApi_AnalyzerServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.AnalyzerServiceUrl)),
+            ["WebApi_NewsServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.NewsServiceUrl)),
+            ["WebApi_HealthProbePath"] = (WebApiOptions.SectionName, nameof(WebApiOptions.HealthProbePath))
         };
 
     public static void Load()
