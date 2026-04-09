@@ -14,13 +14,16 @@ public sealed class FileSystemNewsProvider : INewsProvider
     };
 
     private readonly IOptionsMonitor<CollectorOptions> _collectorOptions;
+    private readonly IOptionsMonitor<WebApiOptions> _webApiOptions;
     private readonly ILogger<FileSystemNewsProvider> _logger;
 
     public FileSystemNewsProvider(
         IOptionsMonitor<CollectorOptions> collectorOptions,
+        IOptionsMonitor<WebApiOptions> webApiOptions,
         ILogger<FileSystemNewsProvider> logger)
     {
         _collectorOptions = collectorOptions;
+        _webApiOptions = webApiOptions;
         _logger = logger;
     }
 
@@ -40,11 +43,12 @@ public sealed class FileSystemNewsProvider : INewsProvider
         if (!Directory.Exists(symbolDirectory))
             return [];
 
+        var newsMaxLimit = _webApiOptions.CurrentValue.NewsMaxLimit;
         var files = Directory.EnumerateFiles(symbolDirectory, "news_*.json")
             .OrderByDescending(x => x)
             .ToArray();
 
-        var results = new List<NewsItemDto>(Math.Min(limit, 200));
+        var results = new List<NewsItemDto>(Math.Min(limit, newsMaxLimit));
         foreach (var file in files)
         {
             if (results.Count >= limit)

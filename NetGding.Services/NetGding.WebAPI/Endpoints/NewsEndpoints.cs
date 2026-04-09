@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using NetGding.Configurations.Options;
 using NetGding.WebApi.Services;
 
 namespace NetGding.WebApi.Endpoints;
@@ -18,12 +20,14 @@ public static class NewsEndpoints
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         INewsProvider newsProvider,
+        IOptions<WebApiOptions> webApiOptions,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(symbol))
             return Results.BadRequest("Symbol is required.");
 
-        var normalizedLimit = limit <= 0 ? 20 : Math.Min(limit, 200);
+        var o = webApiOptions.Value;
+        var normalizedLimit = limit <= 0 ? o.NewsDefaultLimit : Math.Min(limit, o.NewsMaxLimit);
         var normalizedSymbol = symbol.Trim();
 
         var items = await newsProvider

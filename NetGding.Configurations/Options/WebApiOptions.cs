@@ -13,4 +13,6 @@ public sealed class WebApiOptions
     public string HealthProbePath { get; set; } = "/health";
     public int AnalysisHistoryLimit { get; set; } = 500;
     public int MaxRetries { get; set; } = 3;
+    public int NewsDefaultLimit { get; set; } = 20;
+    public int NewsMaxLimit { get; set; } = 200;
 }

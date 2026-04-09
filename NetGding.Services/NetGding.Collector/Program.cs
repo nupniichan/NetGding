@@ -40,7 +40,7 @@ builder.Services.AddSingleton<IAlpacaNewsCollector, AlpacaNewsCollector>();
 builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.Timeout = TimeSpan.FromSeconds(o.WebApiHttpTimeoutSeconds);
     if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
         client.BaseAddress = new Uri(o.WebApiBaseUrl);
 });

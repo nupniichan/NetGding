@@ -69,8 +69,9 @@ public sealed class BotPollingService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "BotPollingService: polling error, retrying in 5s.");
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
+                var retryDelay = _options.CurrentValue.PollingErrorRetrySeconds;
+                _logger.LogError(ex, "BotPollingService: polling error, retrying in {Delay}s.", retryDelay);
+                await Task.Delay(TimeSpan.FromSeconds(retryDelay), stoppingToken).ConfigureAwait(false);
             }
         }
     }
@@ -78,7 +79,7 @@ public sealed class BotPollingService : BackgroundService
     private async Task<long> PollOnceAsync(long offset, CancellationToken ct)
     {
         var o = _options.CurrentValue;
-        var url = $"https://api.telegram.org/bot{o.BotToken}/getUpdates" +
+        var url = $"{o.ApiBaseUrl.TrimEnd('/')}/bot{o.BotToken}/getUpdates" +
                   $"?offset={offset}&timeout={o.PollingTimeoutSeconds}&allowed_updates=[\"message\"]";
 
         var http = _httpFactory.CreateClient(nameof(TelegramNotifier));
@@ -241,8 +242,9 @@ public sealed class BotPollingService : BackgroundService
     private async Task<AnalysisResult> FetchOnDemandAnalysisAsync(
         string symbol, string timeframe, CancellationToken ct)
     {
-        const int maxAttempts = 3;
         var o = _options.CurrentValue;
+        var maxAttempts = o.OnDemandMaxRetries;
+        var retryBaseDelaySeconds = o.OnDemandRetryBaseDelaySeconds;
         var url = $"{o.CollectorBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
         var payload = new { symbol, timeframe };
 
@@ -273,7 +275,7 @@ public sealed class BotPollingService : BackgroundService
                     attempt, maxAttempts, symbol, timeframe);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(attempt * 2), ct).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(attempt * retryBaseDelaySeconds), ct).ConfigureAwait(false);
         }
 
         throw new HttpRequestException($"Collector unreachable after {maxAttempts} attempts.");

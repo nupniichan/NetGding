@@ -57,7 +57,7 @@ public sealed class TelegramNotifier : ITelegramNotifier
             ? text[..(MaxMessageLength - 3)] + "\\.\\.\\."
             : text;
 
-        var url = $"https://api.telegram.org/bot{o.BotToken}/sendMessage";
+        var url = $"{o.ApiBaseUrl.TrimEnd('/')}/bot{o.BotToken}/sendMessage";
         var payload = new { chat_id = chatId, text = truncated, parse_mode = ParseMode };
 
         var http = _httpFactory.CreateClient(nameof(TelegramNotifier));

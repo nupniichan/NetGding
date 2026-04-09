@@ -4,22 +4,24 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace NetGding.Analyzer.FinBert;
 
 public sealed class FinBertSentimentAnalyzer : IFinBertSentimentAnalyzer
 {
-    private const string ApiUrl = "https://api-inference.huggingface.co/models/ProsusAI/finbert";
-
     private readonly HttpClient _httpClient;
+    private readonly FinBertOptions _options;
     private readonly ILogger<FinBertSentimentAnalyzer> _logger;
     private readonly ConcurrentDictionary<string, SentimentPrediction> _cache = new();
 
     public FinBertSentimentAnalyzer(
         HttpClient httpClient,
+        IOptions<FinBertOptions> options,
         ILogger<FinBertSentimentAnalyzer> logger)
     {
         _httpClient = httpClient;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -58,7 +60,7 @@ public sealed class FinBertSentimentAnalyzer : IFinBertSentimentAnalyzer
     {
         var payload = new { inputs = text };
 
-        var response = await _httpClient.PostAsJsonAsync(ApiUrl, payload, cancellationToken)
+        var response = await _httpClient.PostAsJsonAsync(_options.InferenceUrl, payload, cancellationToken)
             .ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();

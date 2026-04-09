@@ -20,5 +20,9 @@ public sealed class CollectorOptions
     public string GemmaModel { get; set; } = "";
     public bool WebApiPublishEnabled { get; set; }
     public string WebApiBaseUrl { get; set; } = "http://localhost:5001";
+    public int WebApiHttpTimeoutSeconds { get; set; } = 30;
     public int AutoAnalysisDelaySeconds { get; set; } = 8;
+    public int AnalysisCollectionOffsetSeconds { get; set; } = 30;
+    public int AnalysisIdlePollMinutes { get; set; } = 1;
+    public int PublishMaxRetries { get; set; } = 3;
 }

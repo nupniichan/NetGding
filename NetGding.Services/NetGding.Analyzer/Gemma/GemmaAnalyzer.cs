@@ -168,7 +168,7 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
 
     private async Task<string> CallChatCompletionAsync(string prompt, CancellationToken ct)
     {
-        const int maxAttempts = 3;
+        var maxAttempts = _options.MaxAttempts;
         var url = $"{_options.BaseUrl.TrimEnd('/')}/chat/completions";
 
         var payload = new
@@ -179,8 +179,8 @@ public sealed class GemmaAnalyzer : IGemmaAnalyzer
                 new { role = "system", content = "You are a professional financial market analyst. Always respond with valid JSON only." },
                 new { role = "user", content = prompt }
             },
-            temperature = 0.3,
-            max_tokens = 2048
+            temperature = _options.Temperature,
+            max_tokens = _options.MaxTokens
         };
         var payloadJson = JsonSerializer.Serialize(payload);
 

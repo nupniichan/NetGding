@@ -31,7 +31,9 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
 
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/publish";
 
-        for (var attempt = 1; attempt <= 3; attempt++)
+        var maxRetries = o.PublishMaxRetries;
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
@@ -47,10 +49,10 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "WebApiAnalysisPublisher: attempt {Attempt}/3 failed for {Symbol}",
-                    attempt, result.Symbol);
+                    "WebApiAnalysisPublisher: attempt {Attempt}/{Max} failed for {Symbol}",
+                    attempt, maxRetries, result.Symbol);
 
-                if (attempt < 3)
+                if (attempt < maxRetries)
                     await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct).ConfigureAwait(false);
             }
         }

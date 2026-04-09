@@ -6,6 +6,12 @@ public sealed class TelegramOptions
 
     public string BotToken { get; set; } = "";
     public string ChatId { get; set; } = "";
+    public string ApiBaseUrl { get; set; } = "https://api.telegram.org";
     public int PollingTimeoutSeconds { get; set; } = 30;
     public string CollectorBaseUrl { get; set; } = "http://localhost:5000";
+    public int NotifierHttpTimeoutSeconds { get; set; } = 60;
+    public int CollectorHttpTimeoutSeconds { get; set; } = 180;
+    public int PollingErrorRetrySeconds { get; set; } = 5;
+    public int OnDemandMaxRetries { get; set; } = 3;
+    public int OnDemandRetryBaseDelaySeconds { get; set; } = 2;
 }

@@ -13,15 +13,16 @@ builder.Services
     .AddOptions<TelegramOptions>()
     .BindConfiguration(TelegramOptions.SectionName);
 
-builder.Services.AddHttpClient(nameof(TelegramNotifier), (_, client) =>
+builder.Services.AddHttpClient(nameof(TelegramNotifier), (sp, client) =>
 {
-    client.Timeout = TimeSpan.FromSeconds(60);
+    var o = sp.GetRequiredService<IOptions<TelegramOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(o.NotifierHttpTimeoutSeconds);
 });
 
 builder.Services.AddHttpClient("CollectorClient", (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<TelegramOptions>>().Value;
-    client.Timeout = TimeSpan.FromMinutes(3);
+    client.Timeout = TimeSpan.FromSeconds(o.CollectorHttpTimeoutSeconds);
     if (!string.IsNullOrWhiteSpace(o.CollectorBaseUrl))
         client.BaseAddress = new Uri(o.CollectorBaseUrl);
 });

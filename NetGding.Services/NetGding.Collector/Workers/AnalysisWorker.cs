@@ -9,8 +9,6 @@ namespace NetGding.Collector.Workers;
 
 public sealed class AnalysisWorker : BackgroundService
 {
-    private static readonly TimeSpan CollectionOffset = TimeSpan.FromSeconds(30);
-
     private readonly IOptionsMonitor<CollectorOptions> _options;
     private readonly IOnDemandAnalyzer _analyzer;
     private readonly IAnalysisPublisher _publisher;
@@ -30,7 +28,8 @@ public sealed class AnalysisWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(CollectionOffset, stoppingToken).ConfigureAwait(false);
+        var collectionOffset = TimeSpan.FromSeconds(_options.CurrentValue.AnalysisCollectionOffsetSeconds);
+        await Task.Delay(collectionOffset, stoppingToken).ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -39,7 +38,7 @@ public sealed class AnalysisWorker : BackgroundService
             if (!o.AnalysisEnabled)
             {
                 _logger.LogDebug("AI analysis is disabled.");
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMinutes(o.AnalysisIdlePollMinutes), stoppingToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -47,7 +46,7 @@ public sealed class AnalysisWorker : BackgroundService
                 o.GemmaBaseUrl.Contains("openrouter", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("AnalysisWorker: GemmaApiKey is required for OpenRouter.");
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMinutes(o.AnalysisIdlePollMinutes), stoppingToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -86,8 +85,9 @@ public sealed class AnalysisWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var o = _options.CurrentValue;
+            var collectionOffset = TimeSpan.FromSeconds(_options.CurrentValue.AnalysisCollectionOffsetSeconds);
             var boundaryWait = BarTimeFrameResolver.DelayUntilNextBarBoundaryUtc(tf, DateTime.UtcNow);
-            await Task.Delay(boundaryWait + CollectionOffset, stoppingToken).ConfigureAwait(false);
+            await Task.Delay(boundaryWait + collectionOffset, stoppingToken).ConfigureAwait(false);
 
             var symbols = (o.Symbols ?? [])
                 .Where(s => !string.IsNullOrWhiteSpace(s))
