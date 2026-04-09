@@ -179,12 +179,15 @@ public sealed class BotPollingService : BackgroundService
         var symbol = parts[1].Trim();
         var timeframe = parts[2].Trim().ToLowerInvariant();
 
-        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "15m", "1h", "4h" };
+        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "15m", "1h", "4h", "1d", "1w", "1m"
+        };
         if (!allowedTimeframes.Contains(timeframe))
         {
             await _notifier.SendTextAsync(
                 chatId,
-                AnalysisMessageFormatter.Escape($"On-demand analysis only supports short timeframes: 15m, 1h, 4h. Use /latest for D1+ results."),
+                AnalysisMessageFormatter.Escape("Supported timeframes: 15m, 1h, 4h, 1d, 1w, 1m."),
                 ct).ConfigureAwait(false);
             return;
         }
@@ -258,11 +261,11 @@ public sealed class BotPollingService : BackgroundService
         "Available commands:\n" +
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
-        "\\- /analyze `<symbol>` `<timeframe>` \\— run live analysis \\(15m, 1h, 4h\\)\n\n" +
+        "\\- /analyze `<symbol>` `<timeframe>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
         "Examples:\n" +
         "  /analyze BTC/USD 4h\n" +
         "  /latest BTC/USD\n\n" +
-        "D1\\+ analysis results are pushed automatically after each bar\\.";
+        "D1\\+ analysis results are still pushed automatically after each bar\\.";
 
     private sealed record TelegramUpdatesResponse(
         [property: JsonPropertyName("ok")] bool Ok,
