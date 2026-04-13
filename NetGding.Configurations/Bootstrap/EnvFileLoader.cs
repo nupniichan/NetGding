@@ -2,7 +2,7 @@ using NetGding.Configurations.Options;
 
 namespace NetGding.Configurations.Bootstrap;
 
-public static class EnvFileLoader
+public sealed class EnvFileLoader
 {
     private static readonly IReadOnlyDictionary<string, (string Section, string Property)> KeyMappings =
         new Dictionary<string, (string Section, string Property)>(StringComparer.OrdinalIgnoreCase)
@@ -27,7 +27,7 @@ public static class EnvFileLoader
             ["WebApi_HealthProbePath"] = (WebApiOptions.SectionName, nameof(WebApiOptions.HealthProbePath))
         };
 
-    public static void Load()
+    public async Task ReadEnvFile()
     {
         ApplyMappingsFromEnvironment();
 
@@ -35,7 +35,11 @@ public static class EnvFileLoader
         if (envPath is null)
             return;
 
-        foreach (var rawLine in File.ReadLines(envPath))
+        var envVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        using var sr = new StreamReader(envPath);
+        string? rawLine;
+        while ((rawLine = await sr.ReadLineAsync()) != null)
         {
             var line = rawLine.Trim();
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
@@ -57,6 +61,11 @@ public static class EnvFileLoader
                 value = value[1..^1];
             }
 
+            envVars[key] = value;
+        }
+
+        foreach (var (key, value) in envVars)
+        {
             SetIfMissing(key, value);
 
             if (KeyMappings.TryGetValue(key, out var target))

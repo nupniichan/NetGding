@@ -7,7 +7,7 @@ using NetGding.Discord.Endpoints;
 using NetGding.Discord.Formatting;
 using NetGding.Discord.Services;
 
-EnvFileLoader.Load();
+await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 

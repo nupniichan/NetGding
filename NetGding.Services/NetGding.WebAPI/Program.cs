@@ -4,7 +4,7 @@ using NetGding.Configurations.Options;
 using NetGding.WebApi.Endpoints;
 using NetGding.WebApi.Services;
 
-EnvFileLoader.Load();
+await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 

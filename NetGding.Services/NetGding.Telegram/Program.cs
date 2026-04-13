@@ -5,7 +5,7 @@ using NetGding.Telegram.Endpoints;
 using NetGding.Telegram.Formatting;
 using NetGding.Telegram.Services;
 
-EnvFileLoader.Load();
+await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 

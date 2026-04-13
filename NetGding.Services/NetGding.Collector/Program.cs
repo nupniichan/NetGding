@@ -8,7 +8,7 @@ using NetGding.Collector.Endpoints;
 using NetGding.Collector.Services;
 using NetGding.Collector.Workers;
 
-EnvFileLoader.Load();
+await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 
