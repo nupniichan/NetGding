@@ -1,4 +1,18 @@
 services:
+  discord:
+    build:
+      context: .
+      dockerfile: NetGding.Services/NetGding.Discord/Dockerfile
+    container_name: netgding-discord
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Discord__CollectorBaseUrl: http://collector:8081
+    ports:
+      - "5003:8080"
+    restart: unless-stopped
+
   telegram:
     build:
       context: .
