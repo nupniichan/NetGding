@@ -18,5 +18,8 @@ public sealed class AnalysisResult
     public RiskManagement RiskManagement { get; set; } = new();
     public string NewsSentiment { get; set; } = "";
     public string NewsSummary { get; set; } = "";
+    public float Confidence { get; set; }
+    public MarketRegime MarketRegime { get; set; }
+    public string SignalSource { get; set; } = "hybrid";
     public DateTime AnalyzedAtUtc { get; set; }
 }

@@ -12,11 +12,12 @@ public sealed record AnalysisRequest(
     string Timeframe,
     IReadOnlyList<OhlcvBar> Bars,
     IndicatorSnapshot Indicators,
-    IReadOnlyList<NewsArticle> News);
+    IReadOnlyList<NewsArticle> News,
+    MarketRegime Regime);
 
 public interface ILlmAnalyzer
 {
-    Task<AnalysisResult> AnalyzeAsync(
+    Task<LlmSignal> AnalyzeAsync(
         AnalysisRequest request,
         CancellationToken cancellationToken = default);
 }

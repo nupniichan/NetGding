@@ -34,7 +34,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         _logger = logger;
     }
 
-    public async Task<AnalysisResult> AnalyzeAsync(
+    public async Task<LlmSignal> AnalyzeAsync(
         AnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -43,22 +43,28 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         var raw = await CallChatCompletionAsync(prompt, cancellationToken)
             .ConfigureAwait(false);
 
-        var result = ParseResponse(raw, request);
-        result.AnalyzedAtUtc = DateTime.UtcNow;
-        return result;
+        return ParseResponse(raw, request);
     }
 
     private string BuildPrompt(AnalysisRequest req)
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine("You are a professional financial market analyst. Analyze the following market data and return your analysis ONLY as a valid JSON object (no markdown, no explanation outside JSON).");
+        sb.AppendLine("You are a professional financial market analyst providing SIGNAL ANALYSIS ONLY.");
+        sb.AppendLine("Your role is to assess market conditions and return structured signals.");
+        sb.AppendLine();
+        sb.AppendLine("STRICT RULES:");
+        sb.AppendLine("  - DO NOT make trading decisions (buy/sell/wait).");
+        sb.AppendLine("  - DO NOT generate entry prices, stop-loss, or take-profit levels.");
+        sb.AppendLine("  - Only analyze market conditions and assign confidence to your assessment.");
+        sb.AppendLine("  - Respond ONLY with a valid JSON object. No markdown, no text outside JSON.");
         sb.AppendLine();
 
         sb.AppendLine($"Symbol: {req.Symbol}");
         sb.AppendLine($"Market: {req.Market}");
         sb.AppendLine($"Type: {req.MarketType}");
         sb.AppendLine($"Timeframe: {req.Timeframe}");
+        sb.AppendLine($"Market Regime (pre-computed): {req.Regime}");
         sb.AppendLine();
 
         var bars = req.Bars;
@@ -80,7 +86,14 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             sb.AppendLine();
         }
 
-        sb.AppendLine("PRE-COMPUTED Indicators (calculated from full historical dataset — copy these EXACT values into the indicators field, do NOT recalculate from OHLCV bars above):");
+        sb.AppendLine("PRE-COMPUTED Indicators (use EXACT values below for your analysis — do NOT recalculate):");
+        sb.AppendLine();
+        sb.AppendLine("ANALYSIS PRIORITY (evaluate in this order):");
+        sb.AppendLine("  1. Trend — EMA alignment (fast vs slow EMA cross)");
+        sb.AppendLine("  2. Momentum — RSI level, MACD histogram direction");
+        sb.AppendLine("  3. Volatility — ATR magnitude relative to price, Bollinger Band width");
+        sb.AppendLine("  4. News — only use as a secondary modifier to confidence, not a primary driver");
+        sb.AppendLine();
         AppendIndicatorDict(sb, "EMA", req.Indicators.Ema);
         AppendIndicatorDict(sb, "MACD", req.Indicators.Macd);
         AppendIndicatorDict(sb, "RSI", req.Indicators.Rsi);
@@ -92,7 +105,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
 
         if (req.News.Count > 0)
         {
-            sb.AppendLine($"Recent News ({req.News.Count} articles):");
+            sb.AppendLine($"Recent News ({req.News.Count} articles — use only as a modifier to confidence):");
             var count = Math.Min(req.News.Count, 10);
             for (int i = 0; i < count; i++)
             {
@@ -102,76 +115,28 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
                     sb.AppendLine($"    {n.Summary[..Math.Min(n.Summary.Length, 200)]}");
             }
             sb.AppendLine();
-            sb.AppendLine("IMPORTANT: Analyze the news articles above to determine their sentiment impact on the asset price.");
-            sb.AppendLine("Consider how positive or negative news may affect short-term and mid-term price movement.");
-            sb.AppendLine("Factor the news sentiment into your trade decision, reason, and risk levels.");
-            sb.AppendLine();
         }
 
-        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema (the indicator values shown are the pre-computed values you MUST use):");
+        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema:");
         sb.AppendLine("{");
-        sb.AppendLine($"  \"symbol\": \"{req.Symbol}\",");
-        sb.AppendLine("  \"market\": \"stock|crypto|forex\",");
-        sb.AppendLine("  \"marketType\": \"future|spot\",");
-        sb.AppendLine($"  \"timeframe\": \"{req.Timeframe}\",");
-        sb.AppendLine("  \"currentPrice\": 0.0,");
-        sb.Append("  \"indicators\": ");
-        sb.AppendLine(BuildIndicatorSchema(req.Indicators) + ",");
-        sb.AppendLine("  \"marketStructure\": {");
-        sb.AppendLine("    \"shortTermTrend\": \"uptrend|downtrend|sideways\",");
-        sb.AppendLine("    \"midTermTrend\": \"uptrend|downtrend|sideways\",");
-        sb.AppendLine("    \"longTermTrend\": \"uptrend|downtrend|sideways\"");
-        sb.AppendLine("  },");
-        sb.AppendLine("  \"decision\": \"buy|sell|wait\",");
-        sb.AppendLine("  \"reason\": \"detailed reason combining technical and news analysis\",");
-        sb.AppendLine($"  \"expectedHoldTime\": \"{ResolveHoldTimeHint(req.Timeframe)}\",");
-        sb.AppendLine("  \"riskManagement\": {");
-        sb.AppendLine("    \"futures\": { \"entry\": 0.0, \"stopLoss\": 0.0, \"takeProfit\": 0.0 },");
-        sb.AppendLine("    \"spot\": { \"buyPrice\": 0.0, \"dcaLevels\": [0.0, 0.0] }");
-        sb.AppendLine("  },");
-        sb.AppendLine("  \"newsSentiment\": \"positive|negative|neutral|none\",");
-        sb.AppendLine("  \"newsSummary\": \"brief summary of how news impacts the trading decision\",");
-        sb.AppendLine("  \"analyzedAtUtc\": \"2025-01-01T00:00:00Z\"");
+        sb.AppendLine("  \"trend\": \"bullish|bearish|neutral\",");
+        sb.AppendLine("  \"momentum\": \"strong|weak|divergence\",");
+        sb.AppendLine("  \"volatility\": \"high|low\",");
+        sb.AppendLine("  \"confidence\": 0.0,");
+        sb.AppendLine("  \"reason\": \"concise explanation combining technical indicator analysis\",");
+        sb.AppendLine("  \"newsImpact\": 0.0");
         sb.AppendLine("}");
-        sb.AppendLine("Provide actionable entry/SL/TP for the given market type.");
-        sb.AppendLine("If news articles are provided, analyze their sentiment and explain their impact on the decision. Set newsSentiment to 'none' if no news is available.");
+        sb.AppendLine();
+        sb.AppendLine("Field rules:");
+        sb.AppendLine("  - trend: bullish (price likely rising), bearish (price likely falling), neutral (no clear direction)");
+        sb.AppendLine("  - momentum: strong (RSI>55 or <45, MACD histogram expanding), weak (RSI near 50, MACD flat), divergence (price/RSI diverging)");
+        sb.AppendLine("  - volatility: high (ATR% > 2% of price or BB wide), low (ATR% < 1% of price or BB narrow)");
+        sb.AppendLine("  - confidence: 0.0-1.0 reflecting how clearly indicators align with the stated trend");
+        sb.AppendLine("  - reason: 1-2 sentences summarizing the indicator evidence");
+        sb.AppendLine("  - newsImpact: -1.0 (strongly negative) to 1.0 (strongly positive), 0.0 if no news");
 
         return sb.ToString();
     }
-
-    private static string BuildIndicatorSchema(IndicatorSnapshot indicators)
-    {
-        var sections = new List<string>();
-        AppendIndicatorSchemaSection(sections, "ema", indicators.Ema);
-        AppendIndicatorSchemaSection(sections, "macd", indicators.Macd);
-        AppendIndicatorSchemaSection(sections, "rsi", indicators.Rsi);
-        AppendIndicatorSchemaSection(sections, "bollingerBands", indicators.BollingerBands);
-        AppendIndicatorSchemaSection(sections, "atr", indicators.Atr);
-        AppendIndicatorSchemaSection(sections, "volumeMa", indicators.VolumeMa);
-        AppendIndicatorSchemaSection(sections, "vwap", indicators.Vwap);
-
-        return "{\n    " + string.Join(",\n    ", sections) + "\n  }";
-    }
-
-    private static void AppendIndicatorSchemaSection(List<string> sections, string key, Dictionary<string, float> dict)
-    {
-        if (dict.Count == 0) return;
-        var entries = string.Join(", ", dict.Select(kv =>
-            $"\"{kv.Key}\": {kv.Value.ToString(CultureInfo.InvariantCulture)}"));
-        sections.Add($"\"{key}\": {{{entries}}}");
-    }
-
-    private static string ResolveHoldTimeHint(string timeframe) =>
-        timeframe.ToLowerInvariant() switch
-        {
-            "15m" or "15min" => "1-4 hours",
-            "1h" or "1hour" or "60m" => "4-12 hours",
-            "4h" or "4hour" or "240m" => "1-3 days",
-            "1d" or "1day" or "d" => "3-14 days",
-            "1w" or "1week" or "w" => "2-8 weeks",
-            "1m" or "1month" or "mo" => "1-6 months",
-            _ => "depends on timeframe"
-        };
 
     private static void AppendIndicatorDict(StringBuilder sb, string name, Dictionary<string, float> dict)
     {
@@ -191,7 +156,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             model = _options.ModelName,
             messages = new[]
             {
-                new { role = "system", content = "You are a professional financial market analyst. Always respond with valid JSON only." },
+                new { role = "system", content = "You are a professional financial market analyst providing signal analysis only. Always respond with valid JSON only. Never include trading decisions, entry prices, stop-loss, or take-profit in your response." },
                 new { role = "user", content = prompt }
             },
             temperature = _options.Temperature,
@@ -246,7 +211,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         throw new HttpRequestException("LLM: max retry attempts exceeded.");
     }
 
-    private AnalysisResult ParseResponse(string raw, AnalysisRequest request)
+    private LlmSignal ParseResponse(string raw, AnalysisRequest request)
     {
         var trimmed = raw.Trim();
 
@@ -260,17 +225,13 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
 
         try
         {
-            var result = JsonSerializer.Deserialize<AnalysisResult>(trimmed, s_jsonOptions);
-            if (result is not null)
-            {
-                result.Symbol = request.Symbol;
-                result.Timeframe = request.Timeframe;
-                return result;
-            }
+            var signal = JsonSerializer.Deserialize<LlmSignal>(trimmed, s_jsonOptions);
+            if (signal is not null)
+                return signal;
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse LLM JSON response, attempting extraction");
+            _logger.LogWarning(ex, "LLM: failed to parse signal JSON, attempting extraction");
         }
 
         var start = trimmed.IndexOf('{');
@@ -278,16 +239,12 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         if (start >= 0 && end > start)
         {
             var extracted = trimmed[start..(end + 1)];
-            var result = JsonSerializer.Deserialize<AnalysisResult>(extracted, s_jsonOptions);
-            if (result is not null)
-            {
-                result.Symbol = request.Symbol;
-                result.Timeframe = request.Timeframe;
-                return result;
-            }
+            var signal = JsonSerializer.Deserialize<LlmSignal>(extracted, s_jsonOptions);
+            if (signal is not null)
+                return signal;
         }
 
         throw new InvalidOperationException(
-            $"Could not parse LLM response for {request.Symbol} ({request.Timeframe}).");
+            $"Could not parse LLM signal response for {request.Symbol} ({request.Timeframe}).");
     }
 }

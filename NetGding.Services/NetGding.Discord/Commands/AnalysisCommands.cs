@@ -48,7 +48,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     public async Task HelpAsync(InteractionContext ctx)
     {
         var embed = new DiscordEmbedBuilder()
-            .WithTitle("NetGding Analysis Bot")
+            .WithTitle("NetGding")
             .WithColor(new DiscordColor(0x5865F2))
             .WithDescription(
                 "**Available commands:**\n\n" +

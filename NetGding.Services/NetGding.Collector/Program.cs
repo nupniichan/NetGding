@@ -1,6 +1,7 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Llm;
+using NetGding.Analyzer.Signal;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Collector.Alpaca;
@@ -60,6 +61,13 @@ builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
     var logger = sp.GetRequiredService<ILogger<LlmAnalyzer>>();
     return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), llmOptions, logger);
 });
+
+builder.Services
+    .AddOptions<SignalEngineOptions>()
+    .BindConfiguration(SignalEngineOptions.SectionName);
+
+builder.Services.AddSingleton<ISignalEngine, SignalEngine>();
+builder.Services.AddSingleton<RiskCalculator>();
 
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
 
