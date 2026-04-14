@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
+using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
 
@@ -31,36 +32,31 @@ public sealed class CollectorGateway : ICollectorGateway
         }
 
         var url = $"{o.CollectorServiceUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var maxRetries = Math.Max(1, o.MaxRetries);
 
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        try
         {
-            try
-            {
-                var http = _httpFactory.CreateClient(nameof(CollectorGateway));
-                var response = await http.PostAsJsonAsync(url, request, ct).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
+            var response = await HttpRetryHelper.ExecuteAsync(
+                () =>
+                {
+                    var http = _httpFactory.CreateClient(nameof(CollectorGateway));
+                    return http.PostAsJsonAsync(url, request, ct);
+                },
+                maxRetries: Math.Max(1, o.MaxRetries),
+                baseDelaySeconds: 2,
+                onRetry: (attempt, max, status) => _logger.LogWarning(
+                    "CollectorGateway: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
+                    attempt, max, status, request.Symbol, request.Timeframe),
+                ct: ct).ConfigureAwait(false);
 
-                return await response.Content.ReadFromJsonAsync<AnalysisResult>(cancellationToken: ct)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex) when (attempt < maxRetries)
-            {
-                _logger.LogWarning(ex,
-                    "CollectorGateway: attempt {Attempt}/{MaxRetries} failed for {Symbol} ({Timeframe})",
-                    attempt, maxRetries, request.Symbol, request.Timeframe);
-
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "CollectorGateway failed for {Symbol} ({Timeframe})",
-                    request.Symbol, request.Timeframe);
-                return null;
-            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<AnalysisResult>(cancellationToken: ct)
+                .ConfigureAwait(false);
         }
-
-        return null;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CollectorGateway failed for {Symbol} ({Timeframe})",
+                request.Symbol, request.Timeframe);
+            return null;
+        }
     }
 }

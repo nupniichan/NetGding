@@ -1,4 +1,4 @@
-namespace NetGding.Models.Indicators.Momentum
+namespace NetGding.Contracts.Models.Indicators.Momentum
 {
     // Relative Strength Index
     public class RSI

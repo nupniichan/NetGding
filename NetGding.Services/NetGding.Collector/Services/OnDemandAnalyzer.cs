@@ -9,10 +9,10 @@ using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
 using NetGding.Contracts.Models.News;
-using NetGding.Models.Indicators.Momentum;
-using NetGding.Models.Indicators.Trends;
-using NetGding.Models.Indicators.Volatility;
-using NetGding.Models.Indicators.Volume;
+using NetGding.Contracts.Models.Indicators.Momentum;
+using NetGding.Contracts.Models.Indicators.Trends;
+using NetGding.Contracts.Models.Indicators.Volatility;
+using NetGding.Contracts.Models.Indicators.Volume;
 
 namespace NetGding.Collector.Services;
 
@@ -23,7 +23,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly IAlpacaNewsCollector _newsCollector;
     private readonly ILlmAnalyzer _llm;
     private readonly ISignalEngine _signalEngine;
-    private readonly RiskCalculator _riskCalculator;
+    private readonly IRiskCalculator _riskCalculator;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
@@ -32,7 +32,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         IAlpacaNewsCollector newsCollector,
         ILlmAnalyzer llm,
         ISignalEngine signalEngine,
-        RiskCalculator riskCalculator,
+        IRiskCalculator riskCalculator,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;

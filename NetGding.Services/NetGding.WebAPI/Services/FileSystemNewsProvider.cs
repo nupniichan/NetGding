@@ -13,17 +13,14 @@ public sealed class FileSystemNewsProvider : INewsProvider
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IOptionsMonitor<CollectorOptions> _collectorOptions;
-    private readonly IOptionsMonitor<WebApiOptions> _webApiOptions;
+    private readonly IOptionsMonitor<WebApiOptions> _options;
     private readonly ILogger<FileSystemNewsProvider> _logger;
 
     public FileSystemNewsProvider(
-        IOptionsMonitor<CollectorOptions> collectorOptions,
-        IOptionsMonitor<WebApiOptions> webApiOptions,
+        IOptionsMonitor<WebApiOptions> options,
         ILogger<FileSystemNewsProvider> logger)
     {
-        _collectorOptions = collectorOptions;
-        _webApiOptions = webApiOptions;
+        _options = options;
         _logger = logger;
     }
 
@@ -34,16 +31,16 @@ public sealed class FileSystemNewsProvider : INewsProvider
         DateTime? toUtc,
         CancellationToken ct = default)
     {
-        var outputDirectory = _collectorOptions.CurrentValue.OutputDirectory;
-        if (string.IsNullOrWhiteSpace(outputDirectory))
+        var o = _options.CurrentValue;
+        if (string.IsNullOrWhiteSpace(o.OutputDirectory))
             return [];
 
         var safeSymbol = symbol.Trim().Replace('/', '_').Replace('\\', '_');
-        var symbolDirectory = Path.Combine(outputDirectory, safeSymbol);
+        var symbolDirectory = Path.Combine(o.OutputDirectory, safeSymbol);
         if (!Directory.Exists(symbolDirectory))
             return [];
 
-        var newsMaxLimit = _webApiOptions.CurrentValue.NewsMaxLimit;
+        var newsMaxLimit = o.NewsMaxLimit;
         var files = Directory.EnumerateFiles(symbolDirectory, "news_*.json")
             .OrderByDescending(x => x)
             .ToArray();

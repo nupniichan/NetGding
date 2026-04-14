@@ -7,16 +7,16 @@ using NetGding.Contracts.Models.Analysis;
 
 namespace NetGding.WebApi.Services;
 
-public sealed class TelegramForwarder : ITelegramForwarder
+public sealed class DiscordForwarder : IDiscordForwarder
 {
     private readonly IHttpClientFactory _httpFactory;
     private readonly IOptionsMonitor<WebApiOptions> _options;
-    private readonly ILogger<TelegramForwarder> _logger;
+    private readonly ILogger<DiscordForwarder> _logger;
 
-    public TelegramForwarder(
+    public DiscordForwarder(
         IHttpClientFactory httpFactory,
         IOptionsMonitor<WebApiOptions> options,
-        ILogger<TelegramForwarder> logger)
+        ILogger<DiscordForwarder> logger)
     {
         _httpFactory = httpFactory;
         _options = options;
@@ -26,18 +26,21 @@ public sealed class TelegramForwarder : ITelegramForwarder
     public async Task ForwardAsync(AnalysisResult result, CancellationToken ct = default)
     {
         var o = _options.CurrentValue;
-        var url = $"{o.TelegramServiceUrl.TrimEnd('/')}/internal/telegram/notify";
+        if (string.IsNullOrWhiteSpace(o.DiscordServiceUrl))
+            return;
+
+        var url = $"{o.DiscordServiceUrl.TrimEnd('/')}/internal/discord/notify";
 
         var response = await HttpRetryHelper.ExecuteAsync(
             () =>
             {
-                var http = _httpFactory.CreateClient(nameof(TelegramForwarder));
+                var http = _httpFactory.CreateClient(nameof(DiscordForwarder));
                 return http.PostAsJsonAsync(url, result, ct);
             },
             maxRetries: Math.Max(1, o.MaxRetries),
             baseDelaySeconds: 2,
             onRetry: (attempt, max, status) => _logger.LogWarning(
-                "TelegramForwarder: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol}",
+                "DiscordForwarder: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol}",
                 attempt, max, status, result.Symbol),
             ct: ct).ConfigureAwait(false);
 

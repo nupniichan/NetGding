@@ -1,4 +1,4 @@
-namespace NetGding.Models.Indicators.Volume
+namespace NetGding.Contracts.Models.Indicators.Volume
 {
     public class VWAP
     {

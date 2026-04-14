@@ -17,6 +17,14 @@ builder.Services
     .AddOptions<CollectorOptions>()
     .BindConfiguration(CollectorOptions.SectionName);
 
+builder.Services
+    .AddOptions<LlmOptions>()
+    .BindConfiguration(LlmOptions.SectionName);
+
+builder.Services
+    .AddOptions<SignalEngineOptions>()
+    .BindConfiguration(SignalEngineOptions.SectionName);
+
 builder.Services.AddSingleton<IAlpacaDataClient>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
@@ -47,27 +55,22 @@ builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
 });
 builder.Services.AddSingleton<IAnalysisPublisher, WebApiAnalysisPublisher>();
 
-builder.Services.AddHttpClient<LlmAnalyzer>();
+builder.Services.AddHttpClient(nameof(LlmAnalyzer), (sp, client) =>
+{
+    var o = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(o.BaseUrl))
+        client.BaseAddress = new Uri(o.BaseUrl);
+});
 builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 {
-    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    var llmOptions = Options.Create(new LlmOptions
-    {
-        BaseUrl = o.LlmBaseUrl,
-        ApiKey = o.LlmApiKey,
-        ModelName = o.LlmModel
-    });
+    var options = sp.GetRequiredService<IOptions<LlmOptions>>();
     var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<LlmAnalyzer>>();
-    return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), llmOptions, logger);
+    return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), options, logger);
 });
 
-builder.Services
-    .AddOptions<SignalEngineOptions>()
-    .BindConfiguration(SignalEngineOptions.SectionName);
-
 builder.Services.AddSingleton<ISignalEngine, SignalEngine>();
-builder.Services.AddSingleton<RiskCalculator>();
+builder.Services.AddSingleton<IRiskCalculator, RiskCalculator>();
 
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
 

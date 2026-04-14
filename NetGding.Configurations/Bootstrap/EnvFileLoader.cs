@@ -9,9 +9,9 @@ public sealed class EnvFileLoader
         {
             ["Alpaca_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ApiKey)),
             ["Alpaca_ApiSecret"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ApiSecret)),
-            ["Llm_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.LlmApiKey)),
-            ["Llm_BaseUrl"] = (CollectorOptions.SectionName, nameof(CollectorOptions.LlmBaseUrl)),
-            ["Llm_Model"] = (CollectorOptions.SectionName, nameof(CollectorOptions.LlmModel)),
+            ["Llm_ApiKey"] = ("Llm", "ApiKey"),
+            ["Llm_BaseUrl"] = ("Llm", "BaseUrl"),
+            ["Llm_Model"] = ("Llm", "ModelName"),
             ["AnalysisPublish_WebApiBaseUrl"] = (CollectorOptions.SectionName, nameof(CollectorOptions.WebApiBaseUrl)),
             ["AnalysisPublish_Enabled"] = (CollectorOptions.SectionName, nameof(CollectorOptions.WebApiPublishEnabled)),
             ["MarketData_OutputDirectory"] = (CollectorOptions.SectionName, nameof(CollectorOptions.OutputDirectory)),

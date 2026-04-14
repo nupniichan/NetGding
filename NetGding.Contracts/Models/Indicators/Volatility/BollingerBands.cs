@@ -1,4 +1,4 @@
-namespace NetGding.Models.Indicators.Volatility
+namespace NetGding.Contracts.Models.Indicators.Volatility
 {
     public class BollingerBands
     {

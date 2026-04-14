@@ -2,6 +2,7 @@ using DSharpPlus;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
+using NetGding.Contracts.Models.Analysis;
 using NetGding.Discord.Commands;
 using NetGding.Discord.Endpoints;
 using NetGding.Discord.Formatting;
@@ -15,12 +16,12 @@ builder.Services
     .AddOptions<DiscordOptions>()
     .BindConfiguration(DiscordOptions.SectionName);
 
-builder.Services.AddHttpClient("CollectorClient", (sp, client) =>
+builder.Services.AddHttpClient("WebApiClient", (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<DiscordOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.CollectorHttpTimeoutSeconds);
-    if (!string.IsNullOrWhiteSpace(o.CollectorBaseUrl))
-        client.BaseAddress = new Uri(o.CollectorBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(o.WebApiHttpTimeoutSeconds);
+    if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
+        client.BaseAddress = new Uri(o.WebApiBaseUrl);
 });
 
 builder.Services.AddSingleton(sp =>

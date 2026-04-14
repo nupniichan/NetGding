@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NetGding.Analyzer.Llm;
 using NetGding.Collector.Alpaca;
 using NetGding.Collector.Services;
 using NetGding.Configurations.Options;
@@ -10,17 +11,20 @@ namespace NetGding.Collector.Workers;
 public sealed class AnalysisWorker : BackgroundService
 {
     private readonly IOptionsMonitor<CollectorOptions> _options;
+    private readonly IOptionsMonitor<LlmOptions> _llmOptions;
     private readonly IOnDemandAnalyzer _analyzer;
     private readonly IAnalysisPublisher _publisher;
     private readonly ILogger<AnalysisWorker> _logger;
 
     public AnalysisWorker(
         IOptionsMonitor<CollectorOptions> options,
+        IOptionsMonitor<LlmOptions> llmOptions,
         IOnDemandAnalyzer analyzer,
         IAnalysisPublisher publisher,
         ILogger<AnalysisWorker> logger)
     {
         _options = options;
+        _llmOptions = llmOptions;
         _analyzer = analyzer;
         _publisher = publisher;
         _logger = logger;
@@ -42,8 +46,9 @@ public sealed class AnalysisWorker : BackgroundService
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(o.LlmApiKey) &&
-                o.LlmBaseUrl.Contains("openrouter", StringComparison.OrdinalIgnoreCase))
+            var llm = _llmOptions.CurrentValue;
+            if (string.IsNullOrWhiteSpace(llm.ApiKey) &&
+                llm.BaseUrl.Contains("openrouter", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("AnalysisWorker: LlmApiKey is required for OpenRouter.");
                 await Task.Delay(TimeSpan.FromMinutes(o.AnalysisIdlePollMinutes), stoppingToken).ConfigureAwait(false);

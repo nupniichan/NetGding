@@ -6,10 +6,10 @@ using DSharpPlus.Entities;
 using DSharpPlus.SlashCommands;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Discord.Formatting;
-using NetGding.Discord.Services;
 
 namespace NetGding.Discord.Commands;
 
@@ -57,8 +57,8 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "• `/analyze <symbol> <timeframe>` — run live analysis\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
                 "**Examples:**\n" +
-                "  `/analyze BTC/USD 4h`\n" +
-                "  `/latest BTC/USD`\n\n" +
+                "  `/analyze BTC 4h`\n" +
+                "  `/latest BTC`\n\n" +
                 "D1+ analysis results are pushed automatically after each bar.")
             .Build();
 
@@ -70,16 +70,17 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     [SlashCommand("latest", "Get cached analysis for a symbol")]
     public async Task LatestAsync(
         InteractionContext ctx,
-        [Option("symbol", "Symbol e.g. BTC/USD")] string symbol)
+        [Option("symbol", "Symbol e.g. BTC")] string symbol)
     {
-        var result = _store.GetLatest(symbol);
+        var normalizedSymbol = NormalizeSymbol(symbol);
+        var result = _store.GetLatest(normalizedSymbol);
 
         if (result is null)
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder()
-                    .WithContent($"No analysis found for symbol: **{symbol}**")
+                    .WithContent($"No analysis found for symbol: **{normalizedSymbol}**")
                     .AsEphemeral(true)).ConfigureAwait(false);
             return;
         }
@@ -94,9 +95,10 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     [SlashCommand("analyze", "Run live analysis for a symbol")]
     public async Task AnalyzeAsync(
         InteractionContext ctx,
-        [Option("symbol", "Symbol e.g. BTC/USD")] string symbol,
+        [Option("symbol", "Symbol e.g. BTC")] string symbol,
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe)
     {
+        var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
 
         if (!s_allowedTimeframes.Contains(timeframe))
@@ -114,28 +116,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var symbolCandidates = symbol.Contains('/', StringComparison.Ordinal)
-                ? [symbol]
-                : new[] { symbol, $"{symbol}/USD" };
-
-            AnalysisResult? result = null;
-            Exception? lastError = null;
-
-            foreach (var candidate in symbolCandidates)
-            {
-                try
-                {
-                    result = await FetchOnDemandAnalysisAsync(candidate, timeframe).ConfigureAwait(false);
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                }
-            }
-
-            if (result is null)
-                throw lastError ?? new InvalidOperationException("On-demand analysis failed.");
+            var result = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe).ConfigureAwait(false);
 
             _store.Store(result);
 
@@ -146,7 +127,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         {
             _logger.LogError(ex,
                 "AnalysisCommands: on-demand analysis failed for {Symbol} ({Timeframe})",
-                symbol, timeframe);
+                normalizedSymbol, timeframe);
 
             await ctx.EditResponseAsync(
                 new DiscordWebhookBuilder()
@@ -158,41 +139,29 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     private async Task<AnalysisResult> FetchOnDemandAnalysisAsync(string symbol, string timeframe)
     {
         var o = _options.CurrentValue;
-        var maxAttempts = o.OnDemandMaxRetries;
-        var url = $"{o.CollectorBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
         var payload = new { symbol, timeframe };
 
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                var http = _httpFactory.CreateClient("CollectorClient");
-                var response = await http.PostAsJsonAsync(url, payload).ConfigureAwait(false);
+        var response = await HttpRetryHelper.ExecuteAsync(
+            () => _httpFactory.CreateClient("WebApiClient").PostAsJsonAsync(url, payload),
+            maxRetries: Math.Max(1, o.OnDemandMaxRetries),
+            baseDelaySeconds: o.OnDemandRetryBaseDelaySeconds,
+            onRetry: (attempt, max, status) => _logger.LogWarning(
+                "AnalysisCommands: on-demand attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
+                attempt, max, status, symbol, timeframe)).ConfigureAwait(false);
 
-                if (response.IsSuccessStatusCode)
-                {
-                    var result = await response.Content
-                        .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions)
-                        .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
-                    return result ?? throw new InvalidOperationException("Collector returned empty response.");
-                }
+        var result = await response.Content
+            .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions)
+            .ConfigureAwait(false);
 
-                _logger.LogWarning(
-                    "AnalysisCommands: on-demand attempt {Attempt}/{Max} returned {StatusCode} for {Symbol} ({Timeframe})",
-                    attempt, maxAttempts, (int)response.StatusCode, symbol, timeframe);
-            }
-            catch (HttpRequestException ex) when (attempt < maxAttempts)
-            {
-                _logger.LogWarning(ex,
-                    "AnalysisCommands: on-demand attempt {Attempt}/{Max} failed for {Symbol} ({Timeframe}), retrying",
-                    attempt, maxAttempts, symbol, timeframe);
-            }
+        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
+    }
 
-            await Task.Delay(TimeSpan.FromSeconds(attempt * o.OnDemandRetryBaseDelaySeconds))
-                .ConfigureAwait(false);
-        }
-
-        throw new HttpRequestException($"Collector unreachable after {maxAttempts} attempts.");
+    private static string NormalizeSymbol(string symbol)
+    {
+        var normalized = symbol.Trim().ToUpperInvariant();
+        return normalized.Contains('/', StringComparison.Ordinal) ? normalized : $"{normalized}/USD";
     }
 }

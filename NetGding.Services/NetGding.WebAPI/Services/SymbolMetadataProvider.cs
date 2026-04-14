@@ -6,16 +6,16 @@ namespace NetGding.WebApi.Services;
 
 public sealed class SymbolMetadataProvider : ISymbolMetadataProvider
 {
-    private readonly IOptionsMonitor<CollectorOptions> _collectorOptions;
+    private readonly IOptionsMonitor<WebApiOptions> _options;
 
-    public SymbolMetadataProvider(IOptionsMonitor<CollectorOptions> collectorOptions)
+    public SymbolMetadataProvider(IOptionsMonitor<WebApiOptions> options)
     {
-        _collectorOptions = collectorOptions;
+        _options = options;
     }
 
     public IReadOnlyList<SupportedSymbol> GetSupportedSymbols()
     {
-        var symbols = _collectorOptions.CurrentValue.Symbols ?? [];
+        var symbols = _options.CurrentValue.Symbols ?? [];
         return symbols
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())
@@ -27,7 +27,7 @@ public sealed class SymbolMetadataProvider : ISymbolMetadataProvider
 
     public IReadOnlyList<string> GetSupportedTimeframes()
     {
-        var timeframes = _collectorOptions.CurrentValue.BarTimeFrames ?? [];
+        var timeframes = _options.CurrentValue.BarTimeFrames ?? [];
         return timeframes
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())

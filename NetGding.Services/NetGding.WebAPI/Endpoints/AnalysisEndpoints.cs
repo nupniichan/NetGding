@@ -50,7 +50,8 @@ public static class AnalysisEndpoints
 
     private static async Task<IResult> HandlePublishAsync(
         [FromBody] AnalysisResult result,
-        ITelegramForwarder forwarder,
+        ITelegramForwarder telegramForwarder,
+        IDiscordForwarder discordForwarder,
         IAnalysisResultStore analysisResultStore,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -65,7 +66,11 @@ public static class AnalysisEndpoints
         try
         {
             analysisResultStore.Store(result);
-            await forwarder.ForwardAsync(result, ct).ConfigureAwait(false);
+
+            await Task.WhenAll(
+                telegramForwarder.ForwardAsync(result, ct),
+                discordForwarder.ForwardAsync(result, ct)
+            ).ConfigureAwait(false);
 
             logger.LogInformation(
                 "Analysis published for {Symbol} ({Timeframe}) → Decision={Decision}",

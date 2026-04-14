@@ -5,7 +5,7 @@ using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Analyzer.Signal;
 
-public sealed class RiskCalculator
+public sealed class RiskCalculator : IRiskCalculator
 {
     private readonly SignalEngineOptions _options;
 

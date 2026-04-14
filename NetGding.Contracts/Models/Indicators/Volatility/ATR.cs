@@ -1,4 +1,4 @@
-namespace NetGding.Models.Indicators.Volatility
+namespace NetGding.Contracts.Models.Indicators.Volatility
 {
     // Average True Range
     public class ATR

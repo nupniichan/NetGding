@@ -12,11 +12,13 @@ builder.Services
     .AddOptions<WebApiOptions>()
     .BindConfiguration(WebApiOptions.SectionName);
 
-builder.Services
-    .AddOptions<CollectorOptions>()
-    .BindConfiguration(CollectorOptions.SectionName);
-
 builder.Services.AddHttpClient(nameof(TelegramForwarder), (sp, client) =>
+{
+    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
+});
+
+builder.Services.AddHttpClient(nameof(DiscordForwarder), (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
     client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
@@ -35,6 +37,7 @@ builder.Services.AddHttpClient("HealthProbe", (sp, client) =>
 });
 
 builder.Services.AddSingleton<ITelegramForwarder, TelegramForwarder>();
+builder.Services.AddSingleton<IDiscordForwarder, DiscordForwarder>();
 builder.Services.AddSingleton<ICollectorGateway, CollectorGateway>();
 builder.Services.AddSingleton<IAnalysisResultStore, InMemoryAnalysisResultStore>();
 builder.Services.AddSingleton<ISymbolMetadataProvider, SymbolMetadataProvider>();

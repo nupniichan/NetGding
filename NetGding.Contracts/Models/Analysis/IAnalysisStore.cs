@@ -1,6 +1,4 @@
-using NetGding.Contracts.Models.Analysis;
-
-namespace NetGding.Telegram.Services;
+namespace NetGding.Contracts.Models.Analysis;
 
 public interface IAnalysisStore
 {

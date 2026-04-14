@@ -1,4 +1,4 @@
-﻿namespace NetGding.Models.Indicators.Trends
+﻿namespace NetGding.Contracts.Models.Indicators.Trends
 {
     // Exponential Moving Average
     public class EMA

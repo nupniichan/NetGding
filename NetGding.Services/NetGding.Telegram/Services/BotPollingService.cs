@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Telegram.Formatting;
@@ -12,7 +13,7 @@ namespace NetGding.Telegram.Services;
 
 public sealed class BotPollingService : BackgroundService
 {
-    private const string CollectorHttpClient = "CollectorClient";
+    private const string WebApiHttpClient = "WebApiClient";
 
     private readonly IHttpClientFactory _httpFactory;
     private readonly IOptionsMonitor<TelegramOptions> _options;
@@ -243,42 +244,25 @@ public sealed class BotPollingService : BackgroundService
         string symbol, string timeframe, CancellationToken ct)
     {
         var o = _options.CurrentValue;
-        var maxAttempts = o.OnDemandMaxRetries;
-        var retryBaseDelaySeconds = o.OnDemandRetryBaseDelaySeconds;
-        var url = $"{o.CollectorBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
         var payload = new { symbol, timeframe };
 
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                var http = _httpFactory.CreateClient(CollectorHttpClient);
-                var response = await http.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
+        var response = await HttpRetryHelper.ExecuteAsync(
+            () => _httpFactory.CreateClient(WebApiHttpClient).PostAsJsonAsync(url, payload, ct),
+            maxRetries: Math.Max(1, o.OnDemandMaxRetries),
+            baseDelaySeconds: o.OnDemandRetryBaseDelaySeconds,
+            onRetry: (attempt, max, status) => _logger.LogWarning(
+                "BotPollingService: on-demand attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
+                attempt, max, status, symbol, timeframe),
+            ct: ct).ConfigureAwait(false);
 
-                if (response.IsSuccessStatusCode)
-                {
-                    var result = await response.Content
-                        .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions, ct)
-                        .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
-                    return result ?? throw new InvalidOperationException("Collector returned empty response.");
-                }
+        var result = await response.Content
+            .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions, ct)
+            .ConfigureAwait(false);
 
-                _logger.LogWarning(
-                    "BotPollingService: on-demand attempt {Attempt}/{Max} returned {StatusCode} for {Symbol} ({Timeframe})",
-                    attempt, maxAttempts, (int)response.StatusCode, symbol, timeframe);
-            }
-            catch (HttpRequestException ex) when (attempt < maxAttempts)
-            {
-                _logger.LogWarning(ex,
-                    "BotPollingService: on-demand attempt {Attempt}/{Max} failed for {Symbol} ({Timeframe}), retrying",
-                    attempt, maxAttempts, symbol, timeframe);
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(attempt * retryBaseDelaySeconds), ct).ConfigureAwait(false);
-        }
-
-        throw new HttpRequestException($"Collector unreachable after {maxAttempts} attempts.");
+        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
 
     private static string BuildWelcomeMessage() =>
