@@ -34,7 +34,8 @@ public sealed class AnalysisEmbedFormatter
                 inline: true);
 
         AppendIndicatorField(builder, r.Indicators);
-        AppendRiskManagementField(builder, r.RiskManagement, r.MarketType);
+        if (r.Decision != TradeDecision.Wait)
+            AppendRiskManagementField(builder, r.RiskManagement, r.MarketType);
 
         if (!string.IsNullOrWhiteSpace(r.Reason))
         {

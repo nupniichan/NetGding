@@ -39,9 +39,12 @@ public sealed class AnalysisMessageFormatter
         sb.Append("*Time Estimate:*").Append('\n');
         sb.Append("\\- Expected Hold Time: ").Append(Escape(string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime)).Append('\n');
         sb.Append('\n');
-        sb.Append("*Risk Management:*").Append('\n');
-        AppendRiskManagement(sb, r.RiskManagement, r.MarketType);
-        sb.Append('\n');
+        if (r.Decision != TradeDecision.Wait)
+        {
+            sb.Append("*Risk Management:*").Append('\n');
+            AppendRiskManagement(sb, r.RiskManagement, r.MarketType);
+            sb.Append('\n');
+        }
         sb.Append("*Datetime:* ").Append(Escape(r.AnalyzedAtUtc.ToString("yyyy-MM-dd HH:mm:ss"))).Append(" UTC");
 
         return sb.ToString();
