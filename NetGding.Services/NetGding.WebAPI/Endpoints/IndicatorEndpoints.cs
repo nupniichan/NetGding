@@ -26,10 +26,11 @@ public static class IndicatorEndpoints
             return Results.BadRequest("Symbol and timeframe are required.");
 
         var normalizedRequest = new OnDemandRequest(symbol.Trim(), timeframe.Trim());
-        var result = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
-        if (result is null)
+        var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
+        if (notification is null)
             return Results.StatusCode(502);
 
+        var result = notification.Result;
         analysisResultStore.Store(result);
 
         var response = new IndicatorResponseDto(ToSummary(result), detail ? result.Indicators : null);

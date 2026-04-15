@@ -17,6 +17,18 @@ public static class TrendCalculator
         }
     }
 
+    public static void FillEmaFiltered(EMA target, IReadOnlyList<OhlcvBar> bars, IEnumerable<int> periods)
+    {
+        target.Values.Clear();
+        int n = bars.Count;
+        foreach (int p in periods)
+        {
+            if (n < p) continue;
+            var series = IndicatorMath.EmaCloseSeries(bars, p);
+            target.Values[p.ToString()] = (float)series[n - 1];
+        }
+    }
+
     public static void FillMacd(MACD target, IReadOnlyList<OhlcvBar> bars)
     {
         target.Values.Clear();

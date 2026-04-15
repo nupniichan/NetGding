@@ -9,4 +9,5 @@ public sealed class IndicatorSnapshot
     public Dictionary<string, float> Atr { get; set; } = new();
     public Dictionary<string, float> VolumeMa { get; set; } = new();
     public Dictionary<string, float> Vwap { get; set; } = new();
+    public Dictionary<string, float> SupportResistance { get; set; } = new();
 }

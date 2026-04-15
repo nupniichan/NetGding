@@ -27,7 +27,7 @@ builder.Services.AddHttpClient(nameof(DiscordForwarder), (sp, client) =>
 builder.Services.AddHttpClient(nameof(CollectorGateway), (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(o.CollectorTimeoutSeconds);
 });
 
 builder.Services.AddHttpClient("HealthProbe", (sp, client) =>

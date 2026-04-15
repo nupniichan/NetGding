@@ -92,7 +92,8 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         sb.AppendLine("  1. Trend — EMA alignment (fast vs slow EMA cross)");
         sb.AppendLine("  2. Momentum — RSI level, MACD histogram direction");
         sb.AppendLine("  3. Volatility — ATR magnitude relative to price, Bollinger Band width");
-        sb.AppendLine("  4. News — only use as a secondary modifier to confidence, not a primary driver");
+        sb.AppendLine("  4. Support/Resistance — proximity of price to S/R levels (S=support below price, R=resistance above)");
+        sb.AppendLine("  5. News — only use as a secondary modifier to confidence, not a primary driver");
         sb.AppendLine();
         AppendIndicatorDict(sb, "EMA", req.Indicators.Ema);
         AppendIndicatorDict(sb, "MACD", req.Indicators.Macd);
@@ -101,6 +102,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         AppendIndicatorDict(sb, "ATR", req.Indicators.Atr);
         AppendIndicatorDict(sb, "VolumeMa", req.Indicators.VolumeMa);
         AppendIndicatorDict(sb, "VWAP", req.Indicators.Vwap);
+        AppendIndicatorDict(sb, "SupportResistance", req.Indicators.SupportResistance);
         sb.AppendLine();
 
         if (req.News.Count > 0)

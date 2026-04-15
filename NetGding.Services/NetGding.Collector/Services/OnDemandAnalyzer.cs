@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Indicators;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
+using NetGding.ChartRenderer;
 using NetGding.Collector.Alpaca;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
@@ -24,6 +25,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly ILlmAnalyzer _llm;
     private readonly ISignalEngine _signalEngine;
     private readonly IRiskCalculator _riskCalculator;
+    private readonly IChartRenderer _chartRenderer;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
@@ -33,6 +35,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         ILlmAnalyzer llm,
         ISignalEngine signalEngine,
         IRiskCalculator riskCalculator,
+        IChartRenderer chartRenderer,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
@@ -41,17 +44,18 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         _llm = llm;
         _signalEngine = signalEngine;
         _riskCalculator = riskCalculator;
+        _chartRenderer = chartRenderer;
         _logger = logger;
     }
 
-    public async Task<AnalysisResult> AnalyzeAsync(string symbol, string timeframe, CancellationToken ct = default)
+    public async Task<AnalysisNotification> AnalyzeAsync(string symbol, string timeframe, CancellationToken ct = default)
     {
         if (!BarTimeFrameResolver.TryResolve(timeframe, out var tf))
             throw new ArgumentException($"Invalid timeframe '{timeframe}'. Allowed: 15m, 1h, 4h, 1d, 1w, 1m.", nameof(timeframe));
 
         var o = _options.CurrentValue;
         var toUtc = DateTime.UtcNow;
-        var fromUtc = toUtc.AddDays(-Math.Max(1, o.LookbackDays));
+        var fromUtc = toUtc.AddDays(-ComputeLookbackDays(timeframe, o.LookbackDays));
 
         _logger.LogInformation(
             "OnDemandAnalyzer: fetching {Symbol} [{TimeFrame}] from {From:O} to {To:O}",
@@ -68,7 +72,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         }
 
         var news = await FetchNewsAsync(symbol, toUtc, o, ct).ConfigureAwait(false);
-        var indicators = ComputeIndicators(bars);
+        var indicators = ComputeIndicators(bars, timeframe);
         var market = ResolveMarket(symbol);
         var marketType = BarTimeFrameResolver.GetMarketType(tf);
         var currentPrice = bars.Count > 0 ? (decimal)bars[^1].Close : 0m;
@@ -106,7 +110,23 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             "OnDemandAnalyzer: {Symbol} ({TimeFrame}) → Decision={Decision}, Confidence={Confidence:F2}, Regime={Regime}",
             symbol, timeframe, result.Decision, result.Confidence, result.MarketRegime);
 
-        return result;
+        var notification = new AnalysisNotification { Result = result };
+
+        if (_options.CurrentValue.ChartEnabled && bars.Count > 0)
+        {
+            try
+            {
+                var chartBytes = _chartRenderer.Render(bars, result);
+                if (chartBytes.Length > 0)
+                    notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", symbol);
+            }
+        }
+
+        return notification;
     }
 
     private async Task<IReadOnlyList<NewsArticle>> FetchNewsAsync(
@@ -124,8 +144,10 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         }
     }
 
-    private static IndicatorSnapshot ComputeIndicators(IReadOnlyList<OhlcvBar> bars)
+    private static IndicatorSnapshot ComputeIndicators(IReadOnlyList<OhlcvBar> bars, string timeframe)
     {
+        var tfGroup = ResolveTimeframeGroup(timeframe);
+
         var ema = new EMA();
         var macd = new MACD();
         var rsi = new RSI();
@@ -134,15 +156,19 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         var vol = new Volume();
         var vwap = new VWAP();
 
-        TrendCalculator.FillEma(ema, bars);
+        TrendCalculator.FillEmaFiltered(ema, bars, GetEmaPeriods(tfGroup));
         TrendCalculator.FillMacd(macd, bars);
         MomentumCalculator.FillRsi(rsi, bars);
         VolatilityCalculator.FillBollingerBands(bb, bars);
         VolatilityCalculator.FillAtr(atr, bars);
-        VolumeCalculator.FillVolumeMa(vol, bars);
-        VolumeCalculator.FillVwap(vwap, bars);
 
-        return new IndicatorSnapshot
+        if (tfGroup != TimeframeGroup.Position)
+            VolumeCalculator.FillVolumeMa(vol, bars);
+
+        if (tfGroup == TimeframeGroup.Intraday)
+            VolumeCalculator.FillVwap(vwap, bars);
+
+        var snapshot = new IndicatorSnapshot
         {
             Ema = ema.Values,
             Macd = macd.Values,
@@ -152,6 +178,43 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             VolumeMa = vol.Values,
             Vwap = vwap.Values
         };
+
+        var atrValue = atr.Values.Count > 0 ? (double)atr.Values.Values.Max() : 0;
+        SupportResistanceCalculator.Fill(snapshot, bars, timeframe, atrValue);
+
+        return snapshot;
+    }
+
+    private static TimeframeGroup ResolveTimeframeGroup(string timeframe) =>
+        timeframe.ToLowerInvariant() switch
+        {
+            "15m" or "15min" or "1h" or "1hour" or "4h" or "4hour" => TimeframeGroup.Intraday,
+            "1d" or "1day" or "d" => TimeframeGroup.Swing,
+            _ => TimeframeGroup.Position
+        };
+
+    private static IEnumerable<int> GetEmaPeriods(TimeframeGroup group) => group switch
+    {
+        TimeframeGroup.Intraday => [9, 21, 50],
+        TimeframeGroup.Swing    => [9, 21, 50, 100, 200],
+        _                       => [21, 50, 100, 200]
+    };
+
+    private static int ComputeLookbackDays(string timeframe, int configuredMin)
+    {
+        const int minBars = 250;
+        const int maxLookbackDays = 3650;
+        var days = timeframe.ToLowerInvariant() switch
+        {
+            "15m" or "15min" => (int)Math.Ceiling(minBars * 15.0 / 1440) + 2,
+            "1h" or "1hour"  => (int)Math.Ceiling(minBars / 24.0) + 2,
+            "4h" or "4hour"  => (int)Math.Ceiling(minBars * 4.0 / 24.0) + 5,
+            "1d" or "1day"   => minBars + 30,
+            "1w" or "1week"  => minBars * 7 + 30,
+            "1m" or "1month" => minBars * 31,
+            _ => 30
+        };
+        return Math.Min(Math.Max(days, configuredMin), maxLookbackDays);
     }
 
     private static MarketStructure ComputeMarketStructure(IndicatorSnapshot indicators)

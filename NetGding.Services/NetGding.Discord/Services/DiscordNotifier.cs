@@ -1,4 +1,5 @@
 using DSharpPlus;
+using DSharpPlus.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Options;
@@ -26,7 +27,7 @@ public sealed class DiscordNotifier : IDiscordNotifier
         _logger = logger;
     }
 
-    public async Task SendAnalysisAsync(AnalysisResult result, CancellationToken ct = default)
+    public async Task SendAnalysisAsync(AnalysisNotification notification, CancellationToken ct = default)
     {
         var o = _options.CurrentValue;
 
@@ -45,14 +46,29 @@ public sealed class DiscordNotifier : IDiscordNotifier
         try
         {
             var channel = await _client.GetChannelAsync(o.ChannelId).ConfigureAwait(false);
-            var embed = _formatter.Build(result);
-            await channel.SendMessageAsync(embed).ConfigureAwait(false);
+            var embed = _formatter.Build(notification.Result);
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                using var ms = new MemoryStream(chartBytes);
+
+                var messageBuilder = new DiscordMessageBuilder()
+                    .AddEmbed(embed)
+                    .AddFile("chart.png", ms);
+
+                await channel.SendMessageAsync(messageBuilder).ConfigureAwait(false);
+            }
+            else
+            {
+                await channel.SendMessageAsync(embed).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "DiscordNotifier: failed to send analysis for {Symbol} to channel {ChannelId}",
-                result.Symbol, o.ChannelId);
+                notification.Result.Symbol, o.ChannelId);
             throw;
         }
     }

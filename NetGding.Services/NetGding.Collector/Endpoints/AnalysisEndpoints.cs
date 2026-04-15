@@ -24,10 +24,10 @@ public static class AnalysisEndpoints
 
         try
         {
-            var result = await analyzer.AnalyzeAsync(request.Symbol.Trim(), request.Timeframe.Trim(), ct)
+            var notification = await analyzer.AnalyzeAsync(request.Symbol.Trim(), request.Timeframe.Trim(), ct)
                 .ConfigureAwait(false);
 
-            return Results.Ok(result);
+            return Results.Ok(notification);
         }
         catch (ArgumentException ex)
         {

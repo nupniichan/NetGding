@@ -4,5 +4,5 @@ namespace NetGding.Collector.Services;
 
 public interface IOnDemandAnalyzer
 {
-    Task<AnalysisResult> AnalyzeAsync(string symbol, string timeframe, CancellationToken ct = default);
+    Task<AnalysisNotification> AnalyzeAsync(string symbol, string timeframe, CancellationToken ct = default);
 }

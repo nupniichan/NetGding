@@ -10,7 +10,7 @@ public sealed class TelegramOptions
     public int PollingTimeoutSeconds { get; set; } = 30;
     public string WebApiBaseUrl { get; set; } = "http://localhost:5001";
     public int NotifierHttpTimeoutSeconds { get; set; } = 60;
-    public int WebApiHttpTimeoutSeconds { get; set; } = 180;
+    public int WebApiHttpTimeoutSeconds { get; set; } = 90;
     public int PollingErrorRetrySeconds { get; set; } = 5;
     public int OnDemandMaxRetries { get; set; } = 3;
     public int OnDemandRetryBaseDelaySeconds { get; set; } = 2;

@@ -34,6 +34,12 @@ public sealed class AnalysisEmbedFormatter
                 inline: true);
 
         AppendIndicatorField(builder, r.Indicators);
+        builder.AddField("Chart Guide",
+            "EMA: trend lines by timeframe\n" +
+            "BB: Bollinger Bands (Upper/Middle/Lower)\n" +
+            "VWAP: intraday only (15m/1h/4h)\n" +
+            "S/R: support (S) and resistance (R)\n" +
+            "Blue dashed line: current price");
         if (r.Decision != TradeDecision.Wait)
             AppendRiskManagementField(builder, r.RiskManagement, r.MarketType);
 
@@ -59,6 +65,7 @@ public sealed class AnalysisEmbedFormatter
         AppendGroup(parts, "ATR", indicators.Atr);
         AppendGroup(parts, "VolumeMa", indicators.VolumeMa);
         AppendGroup(parts, "VWAP", indicators.Vwap);
+        AppendGroup(parts, "S/R", indicators.SupportResistance);
 
         if (parts.Count == 0) return;
 

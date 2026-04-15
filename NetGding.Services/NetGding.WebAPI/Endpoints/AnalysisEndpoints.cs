@@ -36,26 +36,28 @@ public static class AnalysisEndpoints
             return Results.BadRequest("Symbol and Timeframe are required.");
 
         var normalizedRequest = new OnDemandRequest(request.Symbol.Trim(), request.Timeframe.Trim());
-        var result = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
-        if (result is null)
+        var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
+        if (notification is null)
         {
             logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe})",
                 normalizedRequest.Symbol, normalizedRequest.Timeframe);
             return Results.StatusCode(502);
         }
 
-        analysisResultStore.Store(result);
-        return Results.Ok(result);
+        analysisResultStore.Store(notification.Result);
+        return Results.Ok(notification);
     }
 
     private static async Task<IResult> HandlePublishAsync(
-        [FromBody] AnalysisResult result,
+        [FromBody] AnalysisNotification notification,
         ITelegramForwarder telegramForwarder,
         IDiscordForwarder discordForwarder,
         IAnalysisResultStore analysisResultStore,
         ILogger<Program> logger,
         CancellationToken ct)
     {
+        var result = notification.Result;
+
         if (string.IsNullOrWhiteSpace(result.Symbol) ||
             string.IsNullOrWhiteSpace(result.Timeframe) ||
             result.AnalyzedAtUtc == default)
@@ -68,8 +70,8 @@ public static class AnalysisEndpoints
             analysisResultStore.Store(result);
 
             await Task.WhenAll(
-                telegramForwarder.ForwardAsync(result, ct),
-                discordForwarder.ForwardAsync(result, ct)
+                telegramForwarder.ForwardAsync(notification, ct),
+                discordForwarder.ForwardAsync(notification, ct)
             ).ConfigureAwait(false);
 
             logger.LogInformation(

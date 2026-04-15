@@ -22,7 +22,7 @@ public sealed class CollectorGateway : ICollectorGateway
         _logger = logger;
     }
 
-    public async Task<AnalysisResult?> AnalyzeOnDemandAsync(OnDemandRequest request, CancellationToken ct = default)
+    public async Task<AnalysisNotification?> AnalyzeOnDemandAsync(OnDemandRequest request, CancellationToken ct = default)
     {
         var o = _options.CurrentValue;
         if (string.IsNullOrWhiteSpace(o.CollectorServiceUrl))
@@ -49,7 +49,7 @@ public sealed class CollectorGateway : ICollectorGateway
                 ct: ct).ConfigureAwait(false);
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<AnalysisResult>(cancellationToken: ct)
+            return await response.Content.ReadFromJsonAsync<AnalysisNotification>(cancellationToken: ct)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

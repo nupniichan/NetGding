@@ -22,7 +22,7 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
         _logger = logger;
     }
 
-    public async Task PublishAsync(AnalysisResult result, CancellationToken ct = default)
+    public async Task PublishAsync(AnalysisNotification notification, CancellationToken ct = default)
     {
         var o = _options.CurrentValue;
 
@@ -30,7 +30,6 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
             return;
 
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/publish";
-
         var maxRetries = o.PublishMaxRetries;
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
@@ -38,19 +37,19 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
             try
             {
                 var http = _httpFactory.CreateClient(nameof(WebApiAnalysisPublisher));
-                var response = await http.PostAsJsonAsync(url, result, ct).ConfigureAwait(false);
+                var response = await http.PostAsJsonAsync(url, notification, ct).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 _logger.LogDebug(
                     "WebApiAnalysisPublisher: published {Symbol} ({Timeframe})",
-                    result.Symbol, result.Timeframe);
+                    notification.Result.Symbol, notification.Result.Timeframe);
                 return;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
                     "WebApiAnalysisPublisher: attempt {Attempt}/{Max} failed for {Symbol}",
-                    attempt, maxRetries, result.Symbol);
+                    attempt, maxRetries, notification.Result.Symbol);
 
                 if (attempt < maxRetries)
                     await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct).ConfigureAwait(false);
@@ -59,6 +58,6 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
 
         _logger.LogError(
             "WebApiAnalysisPublisher: all attempts failed for {Symbol} ({Timeframe}), skipping publish.",
-            result.Symbol, result.Timeframe);
+            notification.Result.Symbol, notification.Result.Timeframe);
     }
 }

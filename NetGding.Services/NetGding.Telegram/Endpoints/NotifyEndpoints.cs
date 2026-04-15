@@ -14,27 +14,27 @@ public static class NotifyEndpoints
     }
 
     private static async Task<IResult> HandleNotifyAsync(
-        [FromBody] AnalysisResult result,
+        [FromBody] AnalysisNotification notification,
         ITelegramNotifier notifier,
         IAnalysisStore store,
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        store.Store(result);
+        store.Store(notification.Result);
 
         try
         {
-            await notifier.SendAnalysisAsync(result, ct).ConfigureAwait(false);
+            await notifier.SendAnalysisAsync(notification, ct).ConfigureAwait(false);
 
             logger.LogInformation(
                 "Telegram notification sent for {Symbol} ({Timeframe}) → Decision={Decision}",
-                result.Symbol, result.Timeframe, result.Decision);
+                notification.Result.Symbol, notification.Result.Timeframe, notification.Result.Decision);
 
             return Results.Ok();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send Telegram notification for {Symbol}", result.Symbol);
+            logger.LogError(ex, "Failed to send Telegram notification for {Symbol}", notification.Result.Symbol);
             return Results.StatusCode(502);
         }
     }

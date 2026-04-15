@@ -116,12 +116,27 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var result = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe).ConfigureAwait(false);
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe).ConfigureAwait(false);
 
-            _store.Store(result);
+            _store.Store(notification.Result);
 
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder().AddEmbed(_formatter.Build(result))).ConfigureAwait(false);
+            var embed = _formatter.Build(notification.Result);
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                using var ms = new MemoryStream(chartBytes);
+
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder()
+                        .AddEmbed(embed)
+                        .AddFile("chart.png", ms)).ConfigureAwait(false);
+            }
+            else
+            {
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -136,7 +151,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         }
     }
 
-    private async Task<AnalysisResult> FetchOnDemandAnalysisAsync(string symbol, string timeframe)
+    private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(string symbol, string timeframe)
     {
         var o = _options.CurrentValue;
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
@@ -152,11 +167,11 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content
-            .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions)
+        var notification = await response.Content
+            .ReadFromJsonAsync<AnalysisNotification>(s_jsonOptions)
             .ConfigureAwait(false);
 
-        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
+        return notification ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
 
     private static string NormalizeSymbol(string symbol)

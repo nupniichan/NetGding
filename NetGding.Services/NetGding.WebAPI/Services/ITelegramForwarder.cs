@@ -4,5 +4,5 @@ namespace NetGding.WebApi.Services;
 
 public interface ITelegramForwarder
 {
-    Task ForwardAsync(AnalysisResult result, CancellationToken ct = default);
+    Task ForwardAsync(AnalysisNotification notification, CancellationToken ct = default);
 }

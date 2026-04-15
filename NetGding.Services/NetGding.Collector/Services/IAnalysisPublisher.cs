@@ -4,5 +4,5 @@ namespace NetGding.Collector.Services;
 
 public interface IAnalysisPublisher
 {
-    Task PublishAsync(AnalysisResult result, CancellationToken ct = default);
+    Task PublishAsync(AnalysisNotification notification, CancellationToken ct = default);
 }

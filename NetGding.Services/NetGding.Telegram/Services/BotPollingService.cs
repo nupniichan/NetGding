@@ -207,14 +207,14 @@ public sealed class BotPollingService : BackgroundService
                     ? [symbol]
                     : new[] { symbol, $"{symbol}/USD" };
 
-            AnalysisResult? result = null;
+            AnalysisNotification? notification = null;
             Exception? lastError = null;
 
             foreach (var candidate in symbolCandidates)
             {
                 try
                 {
-                    result = await FetchOnDemandAnalysisAsync(candidate, timeframe, ct).ConfigureAwait(false);
+                    notification = await FetchOnDemandAnalysisAsync(candidate, timeframe, ct).ConfigureAwait(false);
                     break;
                 }
                 catch (Exception ex)
@@ -223,12 +223,11 @@ public sealed class BotPollingService : BackgroundService
                 }
             }
 
-            if (result is null)
+            if (notification is null)
                 throw lastError ?? new InvalidOperationException("On-demand analysis failed.");
 
-            _store.Store(result);
-            var message = _formatter.Build(result);
-            await _notifier.SendTextAsync(chatId, message, ct).ConfigureAwait(false);
+            _store.Store(notification.Result);
+            await _notifier.SendAnalysisAsync(notification, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -240,7 +239,7 @@ public sealed class BotPollingService : BackgroundService
         }
     }
 
-    private async Task<AnalysisResult> FetchOnDemandAnalysisAsync(
+    private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(
         string symbol, string timeframe, CancellationToken ct)
     {
         var o = _options.CurrentValue;
@@ -258,11 +257,11 @@ public sealed class BotPollingService : BackgroundService
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content
-            .ReadFromJsonAsync<AnalysisResult>(s_jsonOptions, ct)
+        var notification = await response.Content
+            .ReadFromJsonAsync<AnalysisNotification>(s_jsonOptions, ct)
             .ConfigureAwait(false);
 
-        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
+        return notification ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
 
     private static string BuildWelcomeMessage() =>

@@ -23,7 +23,7 @@ public sealed class DiscordForwarder : IDiscordForwarder
         _logger = logger;
     }
 
-    public async Task ForwardAsync(AnalysisResult result, CancellationToken ct = default)
+    public async Task ForwardAsync(AnalysisNotification notification, CancellationToken ct = default)
     {
         var o = _options.CurrentValue;
         if (string.IsNullOrWhiteSpace(o.DiscordServiceUrl))
@@ -35,13 +35,13 @@ public sealed class DiscordForwarder : IDiscordForwarder
             () =>
             {
                 var http = _httpFactory.CreateClient(nameof(DiscordForwarder));
-                return http.PostAsJsonAsync(url, result, ct);
+                return http.PostAsJsonAsync(url, notification, ct);
             },
             maxRetries: Math.Max(1, o.MaxRetries),
             baseDelaySeconds: 2,
             onRetry: (attempt, max, status) => _logger.LogWarning(
                 "DiscordForwarder: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol}",
-                attempt, max, status, result.Symbol),
+                attempt, max, status, notification.Result.Symbol),
             ct: ct).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();

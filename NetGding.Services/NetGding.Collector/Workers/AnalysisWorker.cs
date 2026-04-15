@@ -108,8 +108,8 @@ public sealed class AnalysisWorker : BackgroundService
                 var symbol = symbols[i];
                 try
                 {
-                    var result = await _analyzer.AnalyzeAsync(symbol, tfName, stoppingToken).ConfigureAwait(false);
-                    await _publisher.PublishAsync(result, stoppingToken).ConfigureAwait(false);
+                    var notification = await _analyzer.AnalyzeAsync(symbol, tfName, stoppingToken).ConfigureAwait(false);
+                    await _publisher.PublishAsync(notification, stoppingToken).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

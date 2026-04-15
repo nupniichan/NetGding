@@ -26,6 +26,13 @@ public sealed class AnalysisMessageFormatter
         sb.Append("*Indicators:*").Append('\n');
         AppendIndicators(sb, r.Indicators);
         sb.Append('\n');
+        sb.Append("*Chart Guide:*").Append('\n');
+        sb.Append("\\- EMA: dynamic trend lines by timeframe").Append('\n');
+        sb.Append("\\- BB: Bollinger Bands \\(Upper/Middle/Lower\\)").Append('\n');
+        sb.Append("\\- VWAP: intraday only \\(15m/1h/4h\\)").Append('\n');
+        sb.Append("\\- S/R: support \\(S\\) and resistance \\(R\\) levels").Append('\n');
+        sb.Append("\\- Blue dashed line: current price").Append('\n');
+        sb.Append('\n');
         sb.Append("*Market Structure:*").Append('\n');
         sb.Append("\\- Short\\-term Trend: ").Append(Escape(NormalizeTrend(r.MarketStructure.ShortTermTrend))).Append('\n');
         sb.Append("\\- Mid\\-term Trend: ").Append(Escape(NormalizeTrend(r.MarketStructure.MidTermTrend))).Append('\n');
@@ -59,6 +66,7 @@ public sealed class AnalysisMessageFormatter
         AppendIndicatorGroup(sb, "ATR", indicators.Atr);
         AppendIndicatorGroup(sb, "VolumeMa", indicators.VolumeMa);
         AppendIndicatorGroup(sb, "VWAP", indicators.Vwap);
+        AppendIndicatorGroup(sb, "S/R", indicators.SupportResistance);
     }
 
     private static void AppendIndicatorGroup(StringBuilder sb, string name, Dictionary<string, float> values)

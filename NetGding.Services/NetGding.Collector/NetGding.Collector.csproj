@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\NetGding.Contracts\NetGding.Contracts.csproj" />
     <ProjectReference Include="..\..\NetGding.Configurations\NetGding.Configurations.csproj" />
     <ProjectReference Include="..\NetGding.Analyzer\NetGding.Analyzer.csproj" />
+    <ProjectReference Include="..\NetGding.ChartRenderer\NetGding.ChartRenderer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
