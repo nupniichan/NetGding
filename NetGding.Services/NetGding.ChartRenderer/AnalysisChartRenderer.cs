@@ -18,7 +18,6 @@ public sealed class AnalysisChartRenderer : IChartRenderer
     private const string BgData     = "#1e222d";
     private const string GridColor  = "#363c4e";
     private const string AxisColor  = "#787b86";
-    private const string LegendBg   = "#1e222d";
     private const string CandleUp   = "#26a69a";
     private const string CandleDown = "#ef5350";
     private const string PriceLine  = "#2962ff";
@@ -110,9 +109,9 @@ public sealed class AnalysisChartRenderer : IChartRenderer
 
         AddDecisionMarker(plot, bars, result);
 
-        var decisionLabel = NormalizeDecision(result.Decision);
-        plot.Title($"{result.Symbol} | {NormalizeTimeframe(result.Timeframe)} | {result.AnalyzedAtUtc:yyyy-MM-dd HH:mm} UTC | {decisionLabel}");
+        AddTopLeftInfo(plot, bars, result);
         plot.Axes.DateTimeTicksBottom();
+        plot.XLabel("Date (UTC)");
         plot.YLabel("Price");
         return GetPngBytes(plot, Width, MainHeight);
     }
@@ -140,6 +139,7 @@ public sealed class AnalysisChartRenderer : IChartRenderer
 
         plot.Add.Bars(barList);
         plot.Axes.DateTimeTicksBottom();
+        plot.XLabel("Date (UTC)");
         plot.YLabel("Volume");
 
         return GetPngBytes(plot, Width, VolumeHeight);
@@ -234,18 +234,33 @@ public sealed class AnalysisChartRenderer : IChartRenderer
         double x = lastBar.TimestampUtc.ToOADate();
         double y = lastBar.Close;
 
-        var (markerColor, shape) = result.Decision switch
+        var markerColor = result.Decision switch
         {
-            TradeDecision.Buy  => (Color.FromHex(CandleUp),   MarkerShape.FilledTriangleUp),
-            TradeDecision.Sell => (Color.FromHex(CandleDown), MarkerShape.FilledTriangleDown),
-            _                  => (Color.FromHex(EmaColors0), MarkerShape.FilledCircle)
+            TradeDecision.Buy  => Color.FromHex(CandleUp),
+            TradeDecision.Sell => Color.FromHex(CandleDown),
+            _                  => Color.FromHex(EmaColors0)
         };
 
         var marker = plot.Add.Marker(x, y);
-        marker.Size       = 16;
-        marker.Color      = markerColor;
-        marker.Shape      = shape;
-        marker.LegendText = NormalizeDecision(result.Decision);
+        marker.Size  = 14;
+        marker.Color = markerColor;
+        marker.Shape = MarkerShape.FilledSquare;
+    }
+
+    private static void AddTopLeftInfo(Plot plot, IReadOnlyList<OhlcvBar> bars, AnalysisResult result)
+    {
+        double x = bars[0].TimestampUtc.ToOADate();
+        double high = bars.Max(b => b.High);
+        double low = bars.Min(b => b.Low);
+        double y = high + (high - low) * 0.04;
+
+        var info = plot.Add.Text($"{result.Symbol} | {NormalizeTimeframe(result.Timeframe)}", x, y);
+        info.Alignment = Alignment.UpperLeft;
+        info.LabelFontColor = Color.FromHex("#d1d4dc");
+        info.LabelBackgroundColor = Color.FromHex(BgFigure).WithAlpha(0.78f);
+        info.LabelBorderColor = Color.FromHex(BgFigure).WithAlpha(0f);
+        info.LabelBold = true;
+        info.LabelFontSize = 16;
     }
 
     private static void ApplyTheme(Plot plot)
@@ -262,9 +277,7 @@ public sealed class AnalysisChartRenderer : IChartRenderer
         plot.Axes.Left.TickLabelStyle.ForeColor   = axisColor;
         plot.Axes.Bottom.Label.ForeColor          = axisColor;
         plot.Axes.Left.Label.ForeColor            = axisColor;
-        plot.Legend.BackgroundColor = Color.FromHex(LegendBg).WithAlpha(0.65f);
-        plot.Legend.FontColor       = Color.FromHex("#d1d4dc");
-        plot.Legend.OutlineColor    = Color.FromHex(GridColor);
+        plot.Legend.IsVisible = false;
     }
 
     private static byte[] GetPngBytes(Plot plot, int width, int height)
