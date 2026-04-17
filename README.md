@@ -23,6 +23,10 @@ NetGding is a **microservice-based trading analysis system** built with .NET 10.
 
 ---
 
+## Important note
+
+This bot is currently under active development and continuous updates. Some features, signals, or outputs may not function as expected or could contain inaccuracies. Users should be aware that the system is still being improved, and results may change over time as adjustments are made.
+
 ## Services
 
 | Service | Port | Description |
@@ -284,3 +288,9 @@ Add new filters by modifying `SignalEngine.Evaluate()`.
 ### Environment Variables
 
 All settings support override via environment variables following the `Section_Key` naming convention (double underscore `__` for nested keys in Docker). See `.env.example` for the full list.
+
+## Disclaimer
+
+All trading signals, insights, and information provided by this bot are for reference purposes only and do not constitute financial advice. The developers are not responsible for any financial losses or decisions made based on the bot’s output. Always conduct your own research and consider consulting with a qualified financial advisor before making any trading decisions.
+
+Thanks for visiting my repository <3
