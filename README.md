@@ -19,7 +19,7 @@
 
 NetGding is a **microservice-based trading analysis system** built with .NET 10. It automates the entire pipeline from raw market data collection to AI-driven signal generation and instant delivery through chat bots.
 
-**It does NOT execute trades.** Instead, it acts as an intelligent analysis assistant collecting OHLCV data and news from Alpaca Markets, computing technical indicators (EMA, MACD, RSI, Bollinger Bands, ATR, VWAP, Support/Resistance), feeding everything into an LLM for signal analysis, applying a rule-based Signal Engine for guardrails, and rendering TradingView-style charts — all delivered to your Telegram or Discord in seconds.
+**It does NOT execute trades.** Instead, it acts as an intelligent analysis assistant collecting OHLCV data from Binance/OKX (Spot/Future), computing technical indicators (EMA, MACD, RSI, Bollinger Bands, ATR, VWAP, Support/Resistance), feeding everything into an LLM for signal analysis, applying a rule-based Signal Engine for guardrails, and rendering TradingView-style charts — all delivered to your Telegram or Discord in seconds.
 
 ---
 
@@ -31,7 +31,7 @@ This bot is currently under active development and continuous updates. Some feat
 
 | Service | Port | Description |
 |---------|------|-------------|
-| **Collector** | `8081` | Core engine, collects OHLCV bars & news from Alpaca, runs scheduled & on-demand analysis |
+| **Collector** | `8081` | Core engine, fetches OHLCV bars from Binance/OKX and runs on-demand analysis |
 | **WebAPI** | `8080` | Central REST gateway, stores results, forwards notifications, serves Swagger UI |
 | **Telegram** | `8080` | Telegram bot, long-poll for commands, sends formatted analysis with charts |
 | **Discord** | `8080` | Discord bot, slash commands, sends rich embed analysis with charts |
@@ -50,19 +50,15 @@ This bot is currently under active development and continuous updates. Some feat
 ## How It Works
 
 ### 1. Data Collection
-Three background workers run inside the **Collector** service:
-
-- **CollectorWorker** — Polls Alpaca at each bar boundary (D1, W1, M1) for OHLCV data per configured symbol. Saves to JSON.
-- **NewsCollectorWorker** — Polls Alpaca News at configurable intervals. Saves articles per symbol to JSON.
-- **AnalysisWorker** — Waits for each bar boundary, then runs full analysis for every symbol and publishes results to WebAPI.
+Collector receives on-demand requests with explicit `exchange` (`binance|okx`) and `marketType` (`spot|future`) then fetches matching OHLCV candles from the requested source.
 
 ### 2. Analysis Pipeline
 When analysis is triggered (scheduled or on-demand via `/analyze`):
 
-1. **Fetch** — OHLCV bars and recent news from Alpaca
+1. **Fetch** — OHLCV bars from selected exchange + market type
 2. **Compute Indicators** — EMA (9/21/50/100/200), MACD, RSI, Bollinger Bands, ATR, Volume MA, VWAP, Support/Resistance levels (auto-selected based on timeframe group: Intraday / Swing / Position)
 3. **Detect Market Regime** — Trending, Ranging, or Volatile
-4. **LLM Analysis** — Build structured prompt with bars + indicators + news → send to LLM (OpenRouter/Gemma) → receive JSON signal (trend, momentum, volatility, confidence, newsImpact)
+4. **LLM Analysis** — Build structured prompt with bars + indicators → send to LLM (OpenRouter/Gemma) → receive JSON signal (trend, momentum, volatility, confidence, newsImpact)
 5. **Signal Engine** — Apply guardrails: minimum confidence threshold, EMA alignment check, reversal stability filter
 6. **Risk Calculator** — Generate Entry/Stop-Loss/Take-Profit (Futures) or Buy price (Spot)
 7. **Chart Rendering** — Generate candlestick chart with overlays (EMA, BB, VWAP, S/R, risk lines, decision marker)
@@ -81,7 +77,6 @@ When analysis is triggered (scheduled or on-demand via `/analyze`):
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/) *(for containerized deployment)*
-- [Alpaca Markets account](https://alpaca.markets/) *(free paper trading account works)*
 - LLM API key *(optional — works with free-tier OpenRouter models or you can use your local API AI like gamma4 or others site)*
 
 ### 1. Clone & Configure
@@ -101,8 +96,6 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `Alpaca_ApiKey` | Alpaca API key |
-| `Alpaca_ApiSecret` | Alpaca API secret |
 | `Llm_ApiKey` | LLM provider API key (OpenRouter, etc.) |
 | `Telegram_BotToken` | Telegram bot token from [@BotFather](https://t.me/BotFather) |
 | `Telegram_ChatId` | Target Telegram chat ID |
@@ -152,7 +145,7 @@ dotnet run --project NetGding.Services/NetGding.Discord
 |---------|-------------|
 | `/start` or `/help` | Show available commands and indicator legend |
 | `/latest <symbol>` | Get the most recent cached analysis (D1+) |
-| `/analyze <symbol> <timeframe>` | Trigger a live on-demand analysis |
+| `/analyze <symbol> <timeframe> <exchange> <market_type>` | Trigger a live on-demand analysis |
 
 ### Discord Slash Commands
 
@@ -160,7 +153,7 @@ dotnet run --project NetGding.Services/NetGding.Discord
 |---------|-------------|
 | `/help` | Show available commands and indicator legend |
 | `/latest <symbol>` | Get the most recent cached analysis (D1+) |
-| `/analyze <symbol> <timeframe>` | Trigger a live on-demand analysis |
+| `/analyze <symbol> <timeframe> <exchange> <market_type>` | Trigger a live on-demand analysis |
 
 ### Supported Timeframes
 
@@ -169,8 +162,8 @@ dotnet run --project NetGding.Services/NetGding.Discord
 ### Examples
 
 ```
-/analyze BTC 4h        → Analyze BTC/USD on 4-hour timeframe
-/analyze ETH/USD 1d    → Analyze ETH/USD on daily timeframe
+/analyze BTC 4h binance spot        → Analyze BTC/USDT spot on Binance
+/analyze ETH/USD 1d okx future      → Analyze ETH-USDT-SWAP on OKX
 /latest SOL            → Get latest cached analysis for SOL/USD
 ```
 
@@ -180,12 +173,12 @@ When WebAPI is running, the following endpoints are available:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/analysis/on-demand` | Trigger on-demand analysis `{symbol, timeframe}` |
+| `POST` | `/api/analysis/on-demand` | Trigger on-demand analysis `{symbol, timeframe, exchange, marketType}` |
 | `POST` | `/api/analysis/publish` | Publish result & forward to bots |
 | `GET` | `/api/analysis/latest/{symbol}?timeframe=1d` | Get latest result |
 | `GET` | `/api/analysis/history/{symbol}?timeframe=1d&page=1&pageSize=20` | Paginated history |
 | `GET` | `/api/news/{symbol}` | Get collected news articles |
-| `GET` | `/api/indicators/{symbol}?timeframe=1d` | Get computed indicators |
+| `GET` | `/api/indicators/{symbol}?timeframe=1d&exchange=binance&marketType=spot` | Get computed indicators |
 | `GET` | `/api/health` | Health check for all services |
 
 Full interactive documentation available at `/swagger` in development mode.
@@ -198,13 +191,7 @@ Full interactive documentation available at `/swagger` in development mode.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `UsePaper` | `true` | Use Alpaca paper trading environment |
-| `Symbols` | `["BTC/USD", "ETH/USD", "SOL/USD", "PAXG/USD"]` | Symbols to track |
-| `BarTimeFrames` | `["15m", "1h", "4h", "1d", "1w", "1m"]` | Timeframes for data collection |
 | `LookbackDays` | `30` | Minimum OHLCV lookback |
-| `NewsEnabled` | `true` | Enable news collection |
-| `NewsPollingIntervalMinutes` | `5` | News polling frequency |
-| `AnalysisEnabled` | `true` | Enable scheduled analysis |
 | `ChartEnabled` | `true` | Attach chart images to results |
 | `WebApiPublishEnabled` | `false` | Auto-publish analysis to WebAPI |
 
@@ -242,9 +229,8 @@ NetGding/
 │   │   └── Gemma/                  # Gemma model integration
 │   ├── NetGding.ChartRenderer/     # TradingView-style chart generation (ScottPlot + SkiaSharp)
 │   ├── NetGding.Collector/         # Data collection & analysis orchestration service
-│   │   ├── Workers/                # CollectorWorker, NewsCollectorWorker, AnalysisWorker
-│   │   ├── Alpaca/                 # AlpacaOhlcvCollector, AlpacaNewsCollector
 │   │   ├── Services/               # OnDemandAnalyzer, WebApiAnalysisPublisher
+│   │   │   └── MarketData/         # Binance/OKX spot-future collectors + resolver
 │   │   └── Persistence/            # JSON file persistence
 │   ├── NetGding.WebAPI/            # Central REST API gateway
 │   │   ├── Endpoints/              # Analysis, News, Indicators, Health, Support endpoints
