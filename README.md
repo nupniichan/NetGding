@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET 10" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
+  <img src="https://img.shields.io/badge/license-Apache%20License%202.0-blue" alt="License" />
 </p>
 
 ---
@@ -75,7 +75,7 @@ When analysis is triggered (scheduled or on-demand via `/analyze`):
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/) *(for containerized deployment)*
 - LLM API key *(optional — works with free-tier OpenRouter models or you can use your local API AI like gamma4 or others site)*
 
@@ -260,7 +260,7 @@ NetGding/
 
 ### Adding a New Symbol Type
 
-Symbols containing `/` are treated as **Crypto** (e.g., `BTC/USD`), others as **Stock**. This is resolved in `OnDemandAnalyzer.ResolveMarket()`.
+Currently my project only support symbol on [Alpaca](https://alpaca.markets/), if the symbol is not on Alpaca then the code will show the errors when you try to get it.
 
 ### Extending the Signal Engine
 
@@ -277,6 +277,16 @@ All settings support override via environment variables following the `Section_K
 
 ## Disclaimer
 
-All trading signals, insights, and information provided by this bot are for reference purposes only and do not constitute financial advice. The developers are not responsible for any financial losses or decisions made based on the bot’s output. Always conduct your own research and consider consulting with a qualified financial advisor before making any trading decisions.
+This project is a personal, non-commercial project developed strictly for educational and research purposes; it does not provide financial advice, investment recommendations, or any form of solicitation to buy or sell financial instruments. All signals and data are for reference only and do not guarantee future results, and should not be interpreted as actionable trading instructions. The developers are not licensed financial advisors and shall not be held liable for any financial losses or decisions made based on this tool. This project is not intended for live trading or production use. **Use at your own risk**. **Always Always Always and please** conduct your own research (DYOR) and consult with a professional before trading.
 
-Thanks for visiting my repository <3
+## Acknowledgments
+
+This project is built upon the incredible foundations provided by the open source community and professional data services. I would like to express my gratitude to the teams behind .NET, Alpaca Markets, and the developers of the various libraries used for technical analysis, charting, and integration. Their incredible work enables developers like me to build complex systems with efficiency and precision. ❤️
+
+## License
+
+Take a look at [Apache License 2.0](https://github.com/nupniichan/NetGding/blob/main/LICENSE)
+
+---
+
+Thanks for visiting my repository ⸜(｡˃ ᵕ ˂ )⸝♡
