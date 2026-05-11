@@ -169,17 +169,19 @@ public sealed class BotPollingService : BackgroundService
     {
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        if (parts.Length < 3)
+        if (parts.Length < 5)
         {
             await _notifier.SendTextAsync(
                 chatId,
-                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe>  e.g. /analyze BTC/USD 4h"),
+                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe> <exchange> <market_type>  e.g. /analyze BTC/USD 4h binance spot"),
                 ct).ConfigureAwait(false);
             return;
         }
 
         var symbol = parts[1].Trim();
         var timeframe = parts[2].Trim().ToLowerInvariant();
+        var exchange = parts[3].Trim().ToLowerInvariant();
+        var marketType = parts[4].Trim().ToLowerInvariant();
 
         var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -194,9 +196,29 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
+        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
+        if (!allowedExchanges.Contains(exchange))
+        {
+            await _notifier.SendTextAsync(
+                chatId,
+                AnalysisMessageFormatter.Escape("Supported exchanges: binance, okx."),
+                ct).ConfigureAwait(false);
+            return;
+        }
+
+        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+        if (!allowedMarketTypes.Contains(marketType))
+        {
+            await _notifier.SendTextAsync(
+                chatId,
+                AnalysisMessageFormatter.Escape("Supported market types: spot, future."),
+                ct).ConfigureAwait(false);
+            return;
+        }
+
         await _notifier.SendTextAsync(
             chatId,
-            AnalysisMessageFormatter.Escape($"Analyzing {symbol} ({timeframe})... please wait."),
+            AnalysisMessageFormatter.Escape($"Analyzing {symbol} ({timeframe}, {exchange}, {marketType})... please wait."),
             ct).ConfigureAwait(false);
 
         try
@@ -214,7 +236,8 @@ public sealed class BotPollingService : BackgroundService
             {
                 try
                 {
-                    notification = await FetchOnDemandAnalysisAsync(candidate, timeframe, ct).ConfigureAwait(false);
+                    notification = await FetchOnDemandAnalysisAsync(candidate, timeframe, exchange, marketType, ct)
+                        .ConfigureAwait(false);
                     break;
                 }
                 catch (Exception ex)
@@ -240,11 +263,15 @@ public sealed class BotPollingService : BackgroundService
     }
 
     private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(
-        string symbol, string timeframe, CancellationToken ct)
+        string symbol,
+        string timeframe,
+        string exchange,
+        string marketType,
+        CancellationToken ct)
     {
         var o = _options.CurrentValue;
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var payload = new { symbol, timeframe };
+        var payload = new { symbol, timeframe, exchange, marketType };
 
         var response = await HttpRetryHelper.ExecuteAsync(
             () => _httpFactory.CreateClient(WebApiHttpClient).PostAsJsonAsync(url, payload, ct),
@@ -269,7 +296,7 @@ public sealed class BotPollingService : BackgroundService
         "Available commands:\n" +
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
-        "\\- /analyze `<symbol>` `<timeframe>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
+        "\\- /analyze `<symbol>` `<timeframe>` `<exchange>` `<market_type>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
         "Indicator legend \\(shown outside chart\\):\n" +
         "\\- EMAx \\— Exponential Moving Average\n" +
         "\\- BB \\— Bollinger Bands\n" +
@@ -277,7 +304,7 @@ public sealed class BotPollingService : BackgroundService
         "\\- S/R \\— Support/Resistance levels\n" +
         "\\- Entry/SL/TP/Buy \\— Risk management price levels\n\n" +
         "Examples:\n" +
-        "  /analyze BTC 4h\n" +
+        "  /analyze BTC 4h binance spot\n" +
         "  /latest BTC/USD\n\n" +
         "D1\\+ analysis results are still pushed automatically after each bar\\.";
 

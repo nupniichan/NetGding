@@ -19,12 +19,22 @@ public static class AnalysisEndpoints
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Symbol) || string.IsNullOrWhiteSpace(request.Timeframe))
-            return Results.BadRequest("Symbol and Timeframe are required.");
+        if (string.IsNullOrWhiteSpace(request.Symbol) ||
+            string.IsNullOrWhiteSpace(request.Timeframe) ||
+            string.IsNullOrWhiteSpace(request.Exchange) ||
+            string.IsNullOrWhiteSpace(request.MarketType))
+        {
+            return Results.BadRequest("Symbol, Timeframe, Exchange, and MarketType are required.");
+        }
 
         try
         {
-            var notification = await analyzer.AnalyzeAsync(request.Symbol.Trim(), request.Timeframe.Trim(), ct)
+            var notification = await analyzer.AnalyzeAsync(
+                    request.Symbol.Trim(),
+                    request.Timeframe.Trim().ToLowerInvariant(),
+                    request.Exchange.Trim().ToLowerInvariant(),
+                    request.MarketType.Trim().ToLowerInvariant(),
+                    ct)
                 .ConfigureAwait(false);
 
             return Results.Ok(notification);
@@ -35,8 +45,8 @@ public static class AnalysisEndpoints
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "On-demand analysis failed for {Symbol} ({Timeframe})",
-                request.Symbol, request.Timeframe);
+            logger.LogError(ex, "On-demand analysis failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
+                request.Symbol, request.Timeframe, request.Exchange, request.MarketType);
             return Results.StatusCode(500);
         }
     }

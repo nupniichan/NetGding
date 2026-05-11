@@ -32,15 +32,27 @@ public static class AnalysisEndpoints
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Symbol) || string.IsNullOrWhiteSpace(request.Timeframe))
-            return Results.BadRequest("Symbol and Timeframe are required.");
+        if (string.IsNullOrWhiteSpace(request.Symbol) ||
+            string.IsNullOrWhiteSpace(request.Timeframe) ||
+            string.IsNullOrWhiteSpace(request.Exchange) ||
+            string.IsNullOrWhiteSpace(request.MarketType))
+        {
+            return Results.BadRequest("Symbol, Timeframe, Exchange, and MarketType are required.");
+        }
 
-        var normalizedRequest = new OnDemandRequest(request.Symbol.Trim(), request.Timeframe.Trim());
+        var normalizedRequest = new OnDemandRequest(
+            request.Symbol.Trim(),
+            request.Timeframe.Trim().ToLowerInvariant(),
+            request.Exchange.Trim().ToLowerInvariant(),
+            request.MarketType.Trim().ToLowerInvariant());
         var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
         if (notification is null)
         {
-            logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe})",
-                normalizedRequest.Symbol, normalizedRequest.Timeframe);
+            logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
+                normalizedRequest.Symbol,
+                normalizedRequest.Timeframe,
+                normalizedRequest.Exchange,
+                normalizedRequest.MarketType);
             return Results.StatusCode(502);
         }
 

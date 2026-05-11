@@ -1,14 +1,12 @@
-using Alpaca.Markets;
 using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
 using NetGding.ChartRenderer;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
-using NetGding.Collector.Alpaca;
 using NetGding.Collector.Endpoints;
 using NetGding.Collector.Services;
-using NetGding.Collector.Workers;
+using NetGding.Collector.Services.MarketData;
 
 await new EnvFileLoader().ReadEnvFile();
 
@@ -26,26 +24,29 @@ builder.Services
     .AddOptions<SignalEngineOptions>()
     .BindConfiguration(SignalEngineOptions.SectionName);
 
-builder.Services.AddSingleton<IAlpacaDataClient>(sp =>
-{
-    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    var key = new SecretKey(o.ApiKey, o.ApiSecret);
-    return o.UsePaper
-        ? Alpaca.Markets.Environments.Paper.GetAlpacaDataClient(key)
-        : Alpaca.Markets.Environments.Live.GetAlpacaDataClient(key);
-});
-
-builder.Services.AddSingleton<IAlpacaCryptoDataClient>(sp =>
-{
-    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    var key = new SecretKey(o.ApiKey, o.ApiSecret);
-    return o.UsePaper
-        ? Alpaca.Markets.Environments.Paper.GetAlpacaCryptoDataClient(key)
-        : Alpaca.Markets.Environments.Live.GetAlpacaCryptoDataClient(key);
-});
-
-builder.Services.AddSingleton<IAlpacaOhlcvCollector, AlpacaOhlcvCollector>();
-builder.Services.AddSingleton<IAlpacaNewsCollector, AlpacaNewsCollector>();
+builder.Services.AddHttpClient(nameof(BinanceMarketDataCollector));
+builder.Services.AddHttpClient(nameof(OkxMarketDataCollector));
+builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
+    new BinanceMarketDataCollector(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        sp.GetRequiredService<ILogger<BinanceMarketDataCollector>>(),
+        NetGding.Contracts.Models.MarketData.MarketType.Spot));
+builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
+    new BinanceMarketDataCollector(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        sp.GetRequiredService<ILogger<BinanceMarketDataCollector>>(),
+        NetGding.Contracts.Models.MarketData.MarketType.Future));
+builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
+    new OkxMarketDataCollector(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        sp.GetRequiredService<ILogger<OkxMarketDataCollector>>(),
+        NetGding.Contracts.Models.MarketData.MarketType.Spot));
+builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
+    new OkxMarketDataCollector(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        sp.GetRequiredService<ILogger<OkxMarketDataCollector>>(),
+        NetGding.Contracts.Models.MarketData.MarketType.Future));
+builder.Services.AddSingleton<IMarketDataCollectorResolver, MarketDataCollectorResolver>();
 
 builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
 {
@@ -75,10 +76,6 @@ builder.Services.AddSingleton<IRiskCalculator, RiskCalculator>();
 builder.Services.AddSingleton<IChartRenderer, AnalysisChartRenderer>();
 
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
-
-builder.Services.AddHostedService<CollectorWorker>();
-builder.Services.AddHostedService<NewsCollectorWorker>();
-builder.Services.AddHostedService<AnalysisWorker>();
 
 var app = builder.Build();
 

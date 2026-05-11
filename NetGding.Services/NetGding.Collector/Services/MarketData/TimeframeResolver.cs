@@ -1,52 +1,52 @@
-using Alpaca.Markets;
 using NetGding.Contracts.Models.MarketData;
 
-namespace NetGding.Collector.Alpaca;
+namespace NetGding.Collector.Services.MarketData;
 
-internal static class BarTimeFrameResolver
+internal enum CandleIntervalUnit
 {
-    public static MarketType GetMarketType(BarTimeFrame timeFrame)
-    {
-        // Spot: >= 4H. Future: < 4H
-        return timeFrame.Unit switch
-        {
-            BarTimeFrameUnit.Minute => MarketType.Future,
-            BarTimeFrameUnit.Hour when timeFrame.Value < 4 => MarketType.Future,
-            BarTimeFrameUnit.Hour => MarketType.Spot,
-            BarTimeFrameUnit.Day => MarketType.Spot,
-            BarTimeFrameUnit.Week => MarketType.Spot,
-            BarTimeFrameUnit.Month => MarketType.Spot,
-            _ => MarketType.Spot
-        };
-    }
+    Minute,
+    Hour,
+    Day,
+    Week,
+    Month
+}
 
+internal readonly record struct CandleTimeFrame(int Value, CandleIntervalUnit Unit);
+
+internal static class TimeframeResolver
+{
     public static bool IsAutoScheduled(string tfName) =>
         tfName.Trim().ToUpperInvariant() is "1D" or "1W" or "1M";
 
-    public static bool TryResolve(string? name, out BarTimeFrame timeFrame)
+    public static bool TryResolve(string? name, out CandleTimeFrame timeFrame)
     {
-        timeFrame = BarTimeFrame.Hour;
+        timeFrame = new CandleTimeFrame(1, CandleIntervalUnit.Hour);
         if (string.IsNullOrWhiteSpace(name))
             return false;
+
         return name.Trim().ToUpperInvariant() switch
         {
-            "15M" => Set(new BarTimeFrame(15, BarTimeFrameUnit.Minute), out timeFrame),
-            "1H" => Set(BarTimeFrame.Hour, out timeFrame),
-            "4H" => Set(new BarTimeFrame(4, BarTimeFrameUnit.Hour), out timeFrame),
-            "1D" => Set(BarTimeFrame.Day, out timeFrame),
-            "1W" => Set(BarTimeFrame.Week, out timeFrame),
-            "1M" => Set(BarTimeFrame.Month, out timeFrame),
+            "15M" => Set(new CandleTimeFrame(15, CandleIntervalUnit.Minute), out timeFrame),
+            "1H" => Set(new CandleTimeFrame(1, CandleIntervalUnit.Hour), out timeFrame),
+            "4H" => Set(new CandleTimeFrame(4, CandleIntervalUnit.Hour), out timeFrame),
+            "1D" => Set(new CandleTimeFrame(1, CandleIntervalUnit.Day), out timeFrame),
+            "1W" => Set(new CandleTimeFrame(1, CandleIntervalUnit.Week), out timeFrame),
+            "1M" => Set(new CandleTimeFrame(1, CandleIntervalUnit.Month), out timeFrame),
             _ => false
         };
     }
 
-    private static bool Set(BarTimeFrame value, out BarTimeFrame tf)
+    public static MarketType DefaultMarketType(CandleTimeFrame timeFrame)
     {
-        tf = value;
-        return true;
+        return timeFrame.Unit switch
+        {
+            CandleIntervalUnit.Minute => MarketType.Future,
+            CandleIntervalUnit.Hour when timeFrame.Value < 4 => MarketType.Future,
+            _ => MarketType.Spot
+        };
     }
 
-    public static TimeSpan DelayUntilNextBarBoundaryUtc(BarTimeFrame tf, DateTime utcNow)
+    public static TimeSpan DelayUntilNextBarBoundaryUtc(CandleTimeFrame tf, DateTime utcNow)
     {
         var next = NextBarBoundaryUtcStrictlyAfter(tf, utcNow);
         var d = next - utcNow;
@@ -55,16 +55,22 @@ internal static class BarTimeFrameResolver
         return d;
     }
 
-    private static DateTime NextBarBoundaryUtcStrictlyAfter(BarTimeFrame tf, DateTime utcNow)
+    private static bool Set(CandleTimeFrame value, out CandleTimeFrame tf)
+    {
+        tf = value;
+        return true;
+    }
+
+    private static DateTime NextBarBoundaryUtcStrictlyAfter(CandleTimeFrame tf, DateTime utcNow)
     {
         var v = Math.Max(1, tf.Value);
         return tf.Unit switch
         {
-            BarTimeFrameUnit.Minute => NextMinuteBoundaryUtc(utcNow, v),
-            BarTimeFrameUnit.Hour => NextHourBoundaryUtc(utcNow, v),
-            BarTimeFrameUnit.Day => NextDayBoundaryFromEpochUtc(utcNow, v),
-            BarTimeFrameUnit.Week => NextWeekBoundaryFromEpochUtc(utcNow, v),
-            BarTimeFrameUnit.Month => NextCalendarMonthStartUtc(utcNow),
+            CandleIntervalUnit.Minute => NextMinuteBoundaryUtc(utcNow, v),
+            CandleIntervalUnit.Hour => NextHourBoundaryUtc(utcNow, v),
+            CandleIntervalUnit.Day => NextDayBoundaryFromEpochUtc(utcNow, v),
+            CandleIntervalUnit.Week => NextWeekBoundaryFromEpochUtc(utcNow, v),
+            CandleIntervalUnit.Month => NextCalendarMonthStartUtc(utcNow),
             _ => utcNow.AddHours(1)
         };
     }

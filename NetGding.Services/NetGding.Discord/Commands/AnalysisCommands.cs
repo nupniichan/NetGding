@@ -23,6 +23,10 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
     private static readonly HashSet<string> s_allowedTimeframes =
         new(StringComparer.OrdinalIgnoreCase) { "15m", "1h", "4h", "1d", "1w", "1m" };
+    private static readonly HashSet<string> s_allowedExchanges =
+        new(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
+    private static readonly HashSet<string> s_allowedMarketTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
 
     private readonly IAnalysisStore _store;
     private readonly AnalysisEmbedFormatter _formatter;
@@ -54,8 +58,10 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Available commands:**\n\n" +
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
-                "• `/analyze <symbol> <timeframe>` — run live analysis\n\n" +
+                "• `/analyze <symbol> <timeframe> <exchange> <market_type>` — run live analysis\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
+                "**Supported exchanges:** `binance`, `okx`\n" +
+                "**Supported market types:** `spot`, `future`\n\n" +
                 "**Indicator legend (shown outside chart):**\n" +
                 "• EMAx — Exponential Moving Average\n" +
                 "• BB — Bollinger Bands\n" +
@@ -63,7 +69,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "• S/R — Support/Resistance levels\n" +
                 "• Entry/SL/TP/Buy — Risk management price levels\n\n" +
                 "**Examples:**\n" +
-                "  `/analyze BTC 4h`\n" +
+                "  `/analyze BTC 4h binance spot`\n" +
                 "  `/latest BTC`\n\n" +
                 "D1+ analysis results are pushed automatically after each bar.")
             .Build();
@@ -102,10 +108,14 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     public async Task AnalyzeAsync(
         InteractionContext ctx,
         [Option("symbol", "Symbol e.g. BTC")] string symbol,
-        [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe)
+        [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe,
+        [Option("exchange", "Exchange: binance, okx")] string exchange,
+        [Option("market_type", "Market type: spot, future")] string marketType)
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
+        exchange = exchange.Trim().ToLowerInvariant();
+        marketType = marketType.Trim().ToLowerInvariant();
 
         if (!s_allowedTimeframes.Contains(timeframe))
         {
@@ -117,12 +127,33 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             return;
         }
 
+        if (!s_allowedExchanges.Contains(exchange))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported exchanges: `binance`, `okx`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!s_allowedMarketTypes.Contains(marketType))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported market types: `spot`, `future`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
         await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
             .ConfigureAwait(false);
 
         try
         {
-            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe).ConfigureAwait(false);
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType)
+                .ConfigureAwait(false);
 
             _store.Store(notification.Result);
 
@@ -157,11 +188,15 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         }
     }
 
-    private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(string symbol, string timeframe)
+    private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(
+        string symbol,
+        string timeframe,
+        string exchange,
+        string marketType)
     {
         var o = _options.CurrentValue;
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var payload = new { symbol, timeframe };
+        var payload = new { symbol, timeframe, exchange, marketType };
 
         var response = await HttpRetryHelper.ExecuteAsync(
             () => _httpFactory.CreateClient("WebApiClient").PostAsJsonAsync(url, payload),

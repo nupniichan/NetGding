@@ -44,8 +44,8 @@ public sealed class CollectorGateway : ICollectorGateway
                 maxRetries: Math.Max(1, o.MaxRetries),
                 baseDelaySeconds: 2,
                 onRetry: (attempt, max, status) => _logger.LogWarning(
-                    "CollectorGateway: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
-                    attempt, max, status, request.Symbol, request.Timeframe),
+                    "CollectorGateway: attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
+                    attempt, max, status, request.Symbol, request.Timeframe, request.Exchange, request.MarketType),
                 ct: ct).ConfigureAwait(false);
 
             response.EnsureSuccessStatusCode();
@@ -54,8 +54,8 @@ public sealed class CollectorGateway : ICollectorGateway
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CollectorGateway failed for {Symbol} ({Timeframe})",
-                request.Symbol, request.Timeframe);
+            _logger.LogError(ex, "CollectorGateway failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
+                request.Symbol, request.Timeframe, request.Exchange, request.MarketType);
             return null;
         }
     }

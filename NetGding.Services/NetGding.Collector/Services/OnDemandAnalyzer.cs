@@ -4,12 +4,11 @@ using NetGding.Analyzer.Indicators;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
 using NetGding.ChartRenderer;
-using NetGding.Collector.Alpaca;
 using NetGding.Configurations.Options;
+using NetGding.Collector.Services.MarketData;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
-using NetGding.Contracts.Models.News;
 using NetGding.Contracts.Models.Indicators.Momentum;
 using NetGding.Contracts.Models.Indicators.Trends;
 using NetGding.Contracts.Models.Indicators.Volatility;
@@ -20,8 +19,7 @@ namespace NetGding.Collector.Services;
 public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
 {
     private readonly IOptionsMonitor<CollectorOptions> _options;
-    private readonly IAlpacaOhlcvCollector _ohlcvCollector;
-    private readonly IAlpacaNewsCollector _newsCollector;
+    private readonly IMarketDataCollectorResolver _collectorResolver;
     private readonly ILlmAnalyzer _llm;
     private readonly ISignalEngine _signalEngine;
     private readonly IRiskCalculator _riskCalculator;
@@ -30,8 +28,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
 
     public OnDemandAnalyzer(
         IOptionsMonitor<CollectorOptions> options,
-        IAlpacaOhlcvCollector ohlcvCollector,
-        IAlpacaNewsCollector newsCollector,
+        IMarketDataCollectorResolver collectorResolver,
         ILlmAnalyzer llm,
         ISignalEngine signalEngine,
         IRiskCalculator riskCalculator,
@@ -39,8 +36,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
-        _ohlcvCollector = ohlcvCollector;
-        _newsCollector = newsCollector;
+        _collectorResolver = collectorResolver;
         _llm = llm;
         _signalEngine = signalEngine;
         _riskCalculator = riskCalculator;
@@ -48,21 +44,29 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         _logger = logger;
     }
 
-    public async Task<AnalysisNotification> AnalyzeAsync(string symbol, string timeframe, CancellationToken ct = default)
+    public async Task<AnalysisNotification> AnalyzeAsync(
+        string symbol,
+        string timeframe,
+        string exchange,
+        string marketType,
+        CancellationToken ct = default)
     {
-        if (!BarTimeFrameResolver.TryResolve(timeframe, out var tf))
+        if (!TimeframeResolver.TryResolve(timeframe, out var tf))
             throw new ArgumentException($"Invalid timeframe '{timeframe}'. Allowed: 15m, 1h, 4h, 1d, 1w, 1m.", nameof(timeframe));
+        if (!TryResolveMarketType(marketType, tf, out var resolvedMarketType))
+            throw new ArgumentException($"Invalid market type '{marketType}'. Allowed: spot, future.", nameof(marketType));
 
         var o = _options.CurrentValue;
         var toUtc = DateTime.UtcNow;
         var fromUtc = toUtc.AddDays(-ComputeLookbackDays(timeframe, o.LookbackDays));
 
         _logger.LogInformation(
-            "OnDemandAnalyzer: fetching {Symbol} [{TimeFrame}] from {From:O} to {To:O}",
-            symbol, timeframe, fromUtc, toUtc);
+            "OnDemandAnalyzer: fetching {Symbol} [{TimeFrame}, {Exchange}, {MarketType}] from {From:O} to {To:O}",
+            symbol, timeframe, exchange, resolvedMarketType, fromUtc, toUtc);
 
-        var bars = await _ohlcvCollector
-            .CollectAsync(symbol, fromUtc, toUtc, tf, ct)
+        var collector = _collectorResolver.Resolve(exchange, resolvedMarketType);
+        var bars = await collector
+            .CollectAsync(symbol, fromUtc, toUtc, timeframe, ct)
             .ConfigureAwait(false);
 
         if (bars.Count == 0)
@@ -71,25 +75,24 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
                 "OnDemandAnalyzer: no OHLCV data for {Symbol} [{TimeFrame}]", symbol, timeframe);
         }
 
-        var news = await FetchNewsAsync(symbol, toUtc, o, ct).ConfigureAwait(false);
+        var news = Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
         var indicators = ComputeIndicators(bars, timeframe);
         var market = ResolveMarket(symbol);
-        var marketType = BarTimeFrameResolver.GetMarketType(tf);
         var currentPrice = bars.Count > 0 ? (decimal)bars[^1].Close : 0m;
         var regime = MarketRegimeDetector.Detect(indicators, bars.Count > 0 ? bars[^1].Close : 0);
 
-        var request = new AnalysisRequest(symbol, market, marketType, timeframe, bars, indicators, news, regime);
+        var request = new AnalysisRequest(symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime);
         var signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
 
         var signalResult = _signalEngine.Evaluate(signal, indicators, symbol);
-        var risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, marketType);
+        var risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, resolvedMarketType);
         var marketStructure = ComputeMarketStructure(indicators);
 
         var result = new AnalysisResult
         {
             Symbol = symbol,
             Market = market,
-            MarketType = marketType,
+            MarketType = resolvedMarketType,
             Timeframe = timeframe,
             CurrentPrice = currentPrice,
             Indicators = indicators,
@@ -129,19 +132,29 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         return notification;
     }
 
-    private async Task<IReadOnlyList<NewsArticle>> FetchNewsAsync(
-        string symbol, DateTime toUtc, CollectorOptions o, CancellationToken ct)
+    private static bool TryResolveMarketType(string requested, CandleTimeFrame timeframe, out MarketType marketType)
     {
-        try
+        if (string.IsNullOrWhiteSpace(requested))
         {
-            var fromUtc = toUtc.AddHours(-Math.Max(1, o.NewsLookbackHours));
-            return await _newsCollector.CollectAsync(symbol, fromUtc, toUtc, ct).ConfigureAwait(false);
+            marketType = TimeframeResolver.DefaultMarketType(timeframe);
+            return true;
         }
-        catch (Exception ex)
+
+        var normalized = requested.Trim().ToLowerInvariant();
+        if (normalized == "spot")
         {
-            _logger.LogWarning(ex, "OnDemandAnalyzer: failed to fetch news for {Symbol}, proceeding without", symbol);
-            return [];
+            marketType = MarketType.Spot;
+            return true;
         }
+
+        if (normalized == "future")
+        {
+            marketType = MarketType.Future;
+            return true;
+        }
+
+        marketType = default;
+        return false;
     }
 
     private static IndicatorSnapshot ComputeIndicators(IReadOnlyList<OhlcvBar> bars, string timeframe)

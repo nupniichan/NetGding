@@ -7,8 +7,6 @@ public sealed class EnvFileLoader
     private static readonly IReadOnlyDictionary<string, (string Section, string Property)> KeyMappings =
         new Dictionary<string, (string Section, string Property)>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Alpaca_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ApiKey)),
-            ["Alpaca_ApiSecret"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ApiSecret)),
             ["Llm_ApiKey"] = ("Llm", "ApiKey"),
             ["Llm_BaseUrl"] = ("Llm", "BaseUrl"),
             ["Llm_Model"] = ("Llm", "ModelName"),
