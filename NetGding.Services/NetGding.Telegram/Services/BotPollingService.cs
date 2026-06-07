@@ -297,7 +297,7 @@ public sealed class BotPollingService : BackgroundService
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
         "\\- /analyze `<symbol>` `<timeframe>` `<exchange>` `<market_type>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
-        "Indicator legend \\(shown outside chart\\):\n" +
+        "Indicator legend:\n" +
         "\\- EMAx \\— Exponential Moving Average\n" +
         "\\- BB \\— Bollinger Bands\n" +
         "\\- VWAP \\— Volume Weighted Average Price\n" +

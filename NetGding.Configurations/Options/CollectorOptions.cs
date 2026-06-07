@@ -10,5 +10,4 @@ public sealed class CollectorOptions
     public string WebApiBaseUrl { get; set; } = "http://localhost:5001";
     public int WebApiHttpTimeoutSeconds { get; set; } = 10;
     public int PublishMaxRetries { get; set; } = 3;
-    public bool ChartEnabled { get; set; } = true;
 }

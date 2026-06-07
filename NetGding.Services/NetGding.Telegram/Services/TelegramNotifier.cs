@@ -34,9 +34,6 @@ public sealed class TelegramNotifier : ITelegramNotifier
     {
         var o = _options.CurrentValue;
 
-        if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
-            return SendPhotoAsync(o.ChatId, notification, ct);
-
         var text = _formatter.Build(notification.Result);
         return SendTextAsync(o.ChatId, text, ct);
     }
@@ -85,56 +82,4 @@ public sealed class TelegramNotifier : ITelegramNotifier
         }
     }
 
-    private async Task SendPhotoAsync(string chatId, AnalysisNotification notification, CancellationToken ct)
-    {
-        var o = _options.CurrentValue;
-
-        if (string.IsNullOrWhiteSpace(o.BotToken))
-        {
-            _logger.LogWarning("TelegramNotifier: BotToken is not configured.");
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(chatId))
-        {
-            _logger.LogWarning("TelegramNotifier: ChatId is not configured.");
-            return;
-        }
-
-        var caption = _formatter.Build(notification.Result);
-        if (caption.Length > MaxCaptionLength)
-            caption = caption[..(MaxCaptionLength - 3)] + "\\.\\.\\.";;
-
-        var url = $"{o.ApiBaseUrl.TrimEnd('/')}/bot{o.BotToken}/sendPhoto";
-        var chartBytes = Convert.FromBase64String(notification.ChartImageBase64!);
-
-        var http = _httpFactory.CreateClient(nameof(TelegramNotifier));
-
-        try
-        {
-            using var form = new MultipartFormDataContent();
-            form.Add(new StringContent(chatId), "chat_id");
-            form.Add(new StringContent(caption), "caption");
-            form.Add(new StringContent(ParseMode), "parse_mode");
-            form.Add(new ByteArrayContent(chartBytes), "photo", "chart.png");
-
-            var response = await http.PostAsync(url, form, ct).ConfigureAwait(false);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                _logger.LogError(
-                    "TelegramNotifier: sendPhoto failed ({StatusCode}): {Body}",
-                    (int)response.StatusCode, body);
-
-                var text = _formatter.Build(notification.Result);
-                await SendTextAsync(chatId, text, ct).ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "TelegramNotifier: failed to send photo to chat {ChatId}", chatId);
-            throw;
-        }
-    }
 }

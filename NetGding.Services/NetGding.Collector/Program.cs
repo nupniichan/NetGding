@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
-using NetGding.ChartRenderer;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Collector.Endpoints;
@@ -73,7 +72,7 @@ builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 
 builder.Services.AddSingleton<ISignalEngine, SignalEngine>();
 builder.Services.AddSingleton<IRiskCalculator, RiskCalculator>();
-builder.Services.AddSingleton<IChartRenderer, AnalysisChartRenderer>();
+
 
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
 
