@@ -53,7 +53,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     {
         if (!TimeframeResolver.TryResolve(timeframe, out var tf))
             throw new ArgumentException($"Invalid timeframe '{timeframe}'. Allowed: 15m, 1h, 4h, 1d, 1w, 1m.", nameof(timeframe));
-        if (!TryResolveMarketType(marketType, tf, out var resolvedMarketType))
+        if (!TryResolveMarketType(marketType, out var resolvedMarketType))
             throw new ArgumentException($"Invalid market type '{marketType}'. Allowed: spot, future.", nameof(marketType));
 
         var o = _options.CurrentValue;
@@ -132,12 +132,12 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         return notification;
     }
 
-    private static bool TryResolveMarketType(string requested, CandleTimeFrame timeframe, out MarketType marketType)
+    private static bool TryResolveMarketType(string requested, out MarketType marketType)
     {
         if (string.IsNullOrWhiteSpace(requested))
         {
-            marketType = TimeframeResolver.DefaultMarketType(timeframe);
-            return true;
+            marketType = default;
+            return false;
         }
 
         var normalized = requested.Trim().ToLowerInvariant();

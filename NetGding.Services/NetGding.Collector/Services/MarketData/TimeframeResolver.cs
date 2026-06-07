@@ -36,15 +36,6 @@ internal static class TimeframeResolver
         };
     }
 
-    public static MarketType DefaultMarketType(CandleTimeFrame timeFrame)
-    {
-        return timeFrame.Unit switch
-        {
-            CandleIntervalUnit.Minute => MarketType.Future,
-            CandleIntervalUnit.Hour when timeFrame.Value < 4 => MarketType.Future,
-            _ => MarketType.Spot
-        };
-    }
 
     public static TimeSpan DelayUntilNextBarBoundaryUtc(CandleTimeFrame tf, DateTime utcNow)
     {

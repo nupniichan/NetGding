@@ -85,8 +85,16 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             sb.AppendLine($"Current Price: {last.Close}");
             sb.AppendLine();
 
-            sb.AppendLine("Recent OHLCV (last 20 bars):");
-            var start = Math.Max(0, bars.Count - 20);
+            var tfNormalized = req.Timeframe.ToLowerInvariant();
+            int recentBarsCount = tfNormalized switch
+            {
+                "15m" or "15min" => 40,
+                "1h" or "1hour" => 30,
+                _ => 20
+            };
+
+            sb.AppendLine($"Recent OHLCV (last {recentBarsCount} bars):");
+            var start = Math.Max(0, bars.Count - recentBarsCount);
             for (int i = start; i < bars.Count; i++)
             {
                 var b = bars[i];
