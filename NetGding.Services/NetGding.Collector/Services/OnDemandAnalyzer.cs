@@ -84,7 +84,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         var request = new AnalysisRequest(symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime);
         var signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
 
-        var signalResult = _signalEngine.Evaluate(signal, indicators, symbol);
+        var signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
         var risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, resolvedMarketType);
         var marketStructure = ComputeMarketStructure(indicators);
 

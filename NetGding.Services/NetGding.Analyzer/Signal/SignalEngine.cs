@@ -18,7 +18,7 @@ public sealed class SignalEngine : ISignalEngine
         _logger = logger;
     }
 
-    public SignalResult Evaluate(LlmSignal signal, IndicatorSnapshot indicators, string symbol)
+    public SignalResult Evaluate(LlmSignal signal, IndicatorSnapshot indicators, string symbol, MarketRegime regime)
     {
         if (signal.Confidence < _options.MinConfidence)
         {
@@ -33,7 +33,7 @@ public sealed class SignalEngine : ISignalEngine
             };
         }
 
-        var candidate = DetermineCandidate(signal);
+        var candidate = DetermineCandidate(signal, regime);
 
         if (candidate == TradeDecision.Wait)
         {
@@ -44,7 +44,7 @@ public sealed class SignalEngine : ISignalEngine
             };
         }
 
-        var guardResult = ApplyEmaGuardrail(candidate, indicators, symbol);
+        var guardResult = ApplyEmaGuardrail(candidate, indicators, symbol, regime);
         if (guardResult is not null) return guardResult;
 
         var stabilityResult = ApplyStabilityFilter(candidate, signal, symbol);
@@ -53,14 +53,48 @@ public sealed class SignalEngine : ISignalEngine
         _lastSignal[symbol] = candidate;
 
         _logger.LogInformation(
-            "SignalEngine [{Symbol}]: {Decision} — confidence {Confidence:F2}, trend={Trend}, momentum={Momentum}",
-            symbol, candidate, signal.Confidence, signal.Trend, signal.Momentum);
+            "SignalEngine [{Symbol}]: {Decision} — confidence {Confidence:F2}, trend={Trend}, momentum={Momentum}, regime={Regime}",
+            symbol, candidate, signal.Confidence, signal.Trend, signal.Momentum, regime);
 
         return new SignalResult { Decision = candidate };
     }
 
-    private TradeDecision DetermineCandidate(LlmSignal signal)
+    private TradeDecision DetermineCandidate(LlmSignal signal, MarketRegime regime)
     {
+        if (regime == MarketRegime.Volatile)
+        {
+            // In highly volatile markets, we require absolute trend/momentum alignment and higher confidence to avoid noise
+            var highConfidenceThreshold = Math.Min(1.0f, _options.TradeConfidence + 0.10f);
+            if (signal.Trend == TrendBias.Bullish
+                && signal.Momentum == MomentumState.Strong
+                && signal.Confidence >= highConfidenceThreshold)
+                return TradeDecision.Buy;
+
+            if (signal.Trend == TrendBias.Bearish
+                && signal.Momentum == MomentumState.Strong
+                && signal.Confidence >= highConfidenceThreshold)
+                return TradeDecision.Sell;
+
+            return TradeDecision.Wait;
+        }
+
+        if (regime == MarketRegime.Ranging)
+        {
+            // In ranging markets, we allow mean-reversion entries on Divergence (exhaustion near bands/levels) or Strong momentum (breakouts)
+            if (signal.Trend == TrendBias.Bullish
+                && (signal.Momentum == MomentumState.Strong || signal.Momentum == MomentumState.Divergence)
+                && signal.Confidence >= _options.TradeConfidence)
+                return TradeDecision.Buy;
+
+            if (signal.Trend == TrendBias.Bearish
+                && (signal.Momentum == MomentumState.Strong || signal.Momentum == MomentumState.Divergence)
+                && signal.Confidence >= _options.TradeConfidence)
+                return TradeDecision.Sell;
+
+            return TradeDecision.Wait;
+        }
+
+        // Trending or default regime
         if (signal.Trend == TrendBias.Bullish
             && signal.Momentum == MomentumState.Strong
             && signal.Confidence >= _options.TradeConfidence)
@@ -74,8 +108,13 @@ public sealed class SignalEngine : ISignalEngine
         return TradeDecision.Wait;
     }
 
-    private SignalResult? ApplyEmaGuardrail(TradeDecision candidate, IndicatorSnapshot indicators, string symbol)
+    private SignalResult? ApplyEmaGuardrail(TradeDecision candidate, IndicatorSnapshot indicators, string symbol, MarketRegime regime)
     {
+        // Guardrails are trend-following filters. In a Ranging regime, we bypass the EMA crossover check
+        // to allow mean-reversion entries at support/resistance.
+        if (regime == MarketRegime.Ranging)
+            return null;
+
         if (!indicators.Ema.TryGetValue(_options.FastEmaPeriod, out var fast) ||
             !indicators.Ema.TryGetValue(_options.SlowEmaPeriod, out var slow))
             return null;

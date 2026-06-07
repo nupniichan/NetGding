@@ -50,21 +50,32 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine("You are a professional financial market analyst providing SIGNAL ANALYSIS ONLY.");
-        sb.AppendLine("Your role is to assess market conditions and return structured signals.");
+        sb.AppendLine("You are a Senior Quant Strategist & Wall Street Proprietary Trader with 15+ years of institutional trading experience.");
+        sb.AppendLine("Your task is to analyze the market context and generate the primary signal parameters.");
         sb.AppendLine();
         sb.AppendLine("STRICT RULES:");
-        sb.AppendLine("  - DO NOT make trading decisions (buy/sell/wait).");
-        sb.AppendLine("  - DO NOT generate entry prices, stop-loss, or take-profit levels.");
-        sb.AppendLine("  - Only analyze market conditions and assign confidence to your assessment.");
-        sb.AppendLine("  - Respond ONLY with a valid JSON object. No markdown, no text outside JSON.");
+        sb.AppendLine("  - DO NOT make direct trading decisions (buy/sell/wait). The executing system will evaluate the signal parameters.");
+        sb.AppendLine("  - DO NOT generate specific trade entry, stop-loss, or take-profit levels. The risk calculator will compute them.");
+        sb.AppendLine("  - Respond ONLY with a valid JSON object. No markdown formatting (no ```json code blocks), no text outside the JSON.");
+        sb.AppendLine();
+        sb.AppendLine("REGIME-AWARE STRATEGY INSTRUCTIONS:");
+        sb.AppendLine($"  Current pre-computed Market Regime is: {req.Regime.ToString().ToUpperInvariant()}");
+        sb.AppendLine("  - TRENDING Regime: Prioritize trend-following indicators. Strong trends are indicated by clear EMA stacking (Fast > Mid > Slow for Bullish, or Fast < Mid < Slow for Bearish) and MACD histogram expansion.");
+        sb.AppendLine("  - RANGING Regime: Prioritize mean-reversion. Look for momentum exhaustion (Weak or Divergence) near Support/Resistance bands and Bollinger Band extremes. Ignore lagging EMA trend stackings; focus on bounce/rejection signals.");
+        sb.AppendLine("  - VOLATILE Regime: Exercise high caution. Look for key structural breakouts (Bollinger Band expansions, extreme ATR relative to price). Prioritize conservative analysis and reduce confidence if indicators conflict.");
+        sb.AppendLine();
+        sb.AppendLine("INDICATOR INTERPRETATION GUIDELINES (Use Confluence):");
+        sb.AppendLine("  1. Trend Alignment: Verify EMA levels (e.g., 9, 21, 50, 100, 200). Stacking alignment indicates trend strength. Flat or tangled lines indicate sideways/ranging.");
+        sb.AppendLine("  2. Momentum Validation: MACD histogram expansion/contraction and RSI levels. Identify any divergence between price action and momentum (e.g. price making new highs but RSI or MACD showing lower highs) which strongly signals trend exhaustion.");
+        sb.AppendLine("  3. Volume & VWAP: Use Volume/VolumeMA and VWAP. Price above VWAP shows institutional buying dominance. Price below VWAP shows selling dominance. Moves supported by rising volume are more sustainable.");
+        sb.AppendLine("  4. Support & Resistance: Check price proximity to S/R levels. Entering near a major S/R level offers a highly asymmetric risk-reward ratio.");
+        sb.AppendLine("  5. News Sentiment: Factor in news headlines as a sentiment modifier only.");
         sb.AppendLine();
 
         sb.AppendLine($"Symbol: {req.Symbol}");
         sb.AppendLine($"Market: {req.Market}");
         sb.AppendLine($"Type: {req.MarketType}");
         sb.AppendLine($"Timeframe: {req.Timeframe}");
-        sb.AppendLine($"Market Regime (pre-computed): {req.Regime}");
         sb.AppendLine();
 
         var bars = req.Bars;
@@ -87,13 +98,6 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         }
 
         sb.AppendLine("PRE-COMPUTED Indicators (use EXACT values below for your analysis — do NOT recalculate):");
-        sb.AppendLine();
-        sb.AppendLine("ANALYSIS PRIORITY (evaluate in this order):");
-        sb.AppendLine("  1. Trend — EMA alignment (fast vs slow EMA cross)");
-        sb.AppendLine("  2. Momentum — RSI level, MACD histogram direction");
-        sb.AppendLine("  3. Volatility — ATR magnitude relative to price, Bollinger Band width");
-        sb.AppendLine("  4. Support/Resistance — proximity of price to S/R levels (S=support below price, R=resistance above)");
-        sb.AppendLine("  5. News — only use as a secondary modifier to confidence, not a primary driver");
         sb.AppendLine();
         AppendIndicatorDict(sb, "EMA", req.Indicators.Ema);
         AppendIndicatorDict(sb, "MACD", req.Indicators.Macd);
@@ -119,23 +123,23 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             sb.AppendLine();
         }
 
-        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema:");
+        sb.AppendLine("Respond with ONLY a JSON object matching this exact schema (lowercase keys):");
         sb.AppendLine("{");
         sb.AppendLine("  \"trend\": \"bullish|bearish|neutral\",");
         sb.AppendLine("  \"momentum\": \"strong|weak|divergence\",");
         sb.AppendLine("  \"volatility\": \"high|low\",");
         sb.AppendLine("  \"confidence\": 0.0,");
-        sb.AppendLine("  \"reason\": \"concise explanation combining technical indicator analysis\",");
+        sb.AppendLine("  \"reason\": \"professional market commentary explaining the confluence of indicators\",");
         sb.AppendLine("  \"newsImpact\": 0.0");
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("Field rules:");
-        sb.AppendLine("  - trend: bullish (price likely rising), bearish (price likely falling), neutral (no clear direction)");
-        sb.AppendLine("  - momentum: strong (RSI>55 or <45, MACD histogram expanding), weak (RSI near 50, MACD flat), divergence (price/RSI diverging)");
-        sb.AppendLine("  - volatility: high (ATR% > 2% of price or BB wide), low (ATR% < 1% of price or BB narrow)");
-        sb.AppendLine("  - confidence: 0.0-1.0 reflecting how clearly indicators align with the stated trend");
-        sb.AppendLine("  - reason: 1-2 sentences summarizing the indicator evidence");
-        sb.AppendLine("  - newsImpact: -1.0 (strongly negative) to 1.0 (strongly positive), 0.0 if no news");
+        sb.AppendLine("  - trend: Use 'bullish' for upward structure, 'bearish' for downward structure, or 'neutral' for consolidation/ranging.");
+        sb.AppendLine("  - momentum: Use 'strong' for high directional momentum, 'weak' for flat/consolidating, or 'divergence' for exhaustion/reversal indications (RSI/MACD moving opposite to price).");
+        sb.AppendLine("  - volatility: Use 'high' (ATR relative to price is high, or Bollinger Bands wide) or 'low' (ATR is low, or Bollinger Bands narrow/squeezing).");
+        sb.AppendLine("  - confidence: Score 0.0-1.0. High confidence (0.8+) requires strong confluence of multiple indicators (e.g. Trend, Momentum, S/R, VWAP alignment). Lower confidence (0.5-0.7) if indicators diverge or key resistance/support levels are nearby.");
+        sb.AppendLine("  - reason: A highly professional 1-2 sentence commentary. Use sophisticated institutional terminology (e.g. 'liquidity sweep', 'momentum exhaustion near major resistance', 'bullish EMA structure supported by institutional volume above VWAP'). Do not say 'the trend is bullish' or reference JSON field values directly.");
+        sb.AppendLine("  - newsImpact: -1.0 (strongly negative) to 1.0 (strongly positive), 0.0 if neutral or no news.");
 
         return sb.ToString();
     }
@@ -158,7 +162,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             model = _options.ModelName,
             messages = new[]
             {
-                new { role = "system", content = "You are a professional financial market analyst providing signal analysis only. Always respond with valid JSON only. Never include trading decisions, entry prices, stop-loss, or take-profit in your response." },
+                new { role = "system", content = "You are a Senior Quant Strategist & Wall Street Proprietary Trader. Provide institutional-grade, data-driven market signal analysis. You must output a valid JSON object ONLY. Never include markdown formatting or any text outside the JSON." },
                 new { role = "user", content = prompt }
             },
             temperature = _options.Temperature,
