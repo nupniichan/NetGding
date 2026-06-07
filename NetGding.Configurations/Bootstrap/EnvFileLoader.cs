@@ -22,7 +22,9 @@ public sealed class EnvFileLoader
             ["WebApi_CollectorServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.CollectorServiceUrl)),
             ["WebApi_AnalyzerServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.AnalyzerServiceUrl)),
             ["WebApi_NewsServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.NewsServiceUrl)),
-            ["WebApi_HealthProbePath"] = (WebApiOptions.SectionName, nameof(WebApiOptions.HealthProbePath))
+            ["WebApi_HealthProbePath"] = (WebApiOptions.SectionName, nameof(WebApiOptions.HealthProbePath)),
+            ["ChartEnabled"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ChartEnabled)),
+            ["ChartImg_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ChartImgApiKey))
         };
 
     public async Task ReadEnvFile()

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Indicators;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
+using NetGding.ChartRenderer;
 using NetGding.Configurations.Options;
 using NetGding.Collector.Services.MarketData;
 using NetGding.Contracts.Models.Analysis;
@@ -22,6 +23,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly ILlmAnalyzer _llm;
     private readonly ISignalEngine _signalEngine;
     private readonly IRiskCalculator _riskCalculator;
+    private readonly IChartRenderer _chartRenderer;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
@@ -30,6 +32,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         ILlmAnalyzer llm,
         ISignalEngine signalEngine,
         IRiskCalculator riskCalculator,
+        IChartRenderer chartRenderer,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
@@ -37,6 +40,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         _llm = llm;
         _signalEngine = signalEngine;
         _riskCalculator = riskCalculator;
+        _chartRenderer = chartRenderer;
         _logger = logger;
     }
 
@@ -111,7 +115,19 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
 
         var notification = new AnalysisNotification { Result = result };
 
-
+        if (_options.CurrentValue.ChartEnabled && bars.Count > 0)
+        {
+            try
+            {
+                var chartBytes = await _chartRenderer.RenderAsync(bars, result, exchange, ct).ConfigureAwait(false);
+                if (chartBytes.Length > 0)
+                    notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", symbol);
+            }
+        }
 
         return notification;
     }

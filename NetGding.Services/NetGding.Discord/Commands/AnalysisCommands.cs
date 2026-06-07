@@ -62,7 +62,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
                 "**Supported exchanges:** `binance`, `okx`\n" +
                 "**Supported market types:** `spot`, `future`\n\n" +
-                "**Indicator legend:**\n" +
+                "**Indicator legend (shown on chart and legend):**\n" +
                 "• EMAx — Exponential Moving Average\n" +
                 "• BB — Bollinger Bands\n" +
                 "• VWAP — Volume Weighted Average Price\n" +
@@ -159,8 +159,21 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
             var embed = _formatter.Build(notification.Result);
 
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                using var ms = new MemoryStream(chartBytes);
+
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder()
+                        .AddEmbed(embed)
+                        .AddFile("chart.png", ms)).ConfigureAwait(false);
+            }
+            else
+            {
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
