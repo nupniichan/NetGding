@@ -15,7 +15,8 @@ public sealed class AnalysisEmbedFormatter
         {
             TradeDecision.Buy => new DiscordColor(0x00B894),
             TradeDecision.Sell => new DiscordColor(0xD63031),
-            _ => new DiscordColor(0xFDCB6E)
+            TradeDecision.Wait => new DiscordColor(0x95A5A6),
+            _ => new DiscordColor(0x95A5A6)
         };
 
         var builder = new DiscordEmbedBuilder()
@@ -24,16 +25,18 @@ public sealed class AnalysisEmbedFormatter
             .WithTimestamp(r.AnalyzedAtUtc)
             .AddField("Decision", NormalizeDecision(r.Decision), inline: true)
             .AddField("Price", r.CurrentPrice.ToString("F2"), inline: true)
-            .AddField("Market", $"{NormalizeMarket(r.Market)} / {NormalizeMarketType(r.MarketType)}", inline: true)
-            .AddField("Trends",
-                $"Short-term: {NormalizeTrend(r.MarketStructure.ShortTermTrend)}\n" +
-                $"Mid-term:   {NormalizeTrend(r.MarketStructure.MidTermTrend)}\n" +
-                $"Long-term:  {NormalizeTrend(r.MarketStructure.LongTermTrend)}")
             .AddField("Hold Time",
                 string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime,
-                inline: true);
+                inline: true)
+            .AddField("Market", $"{NormalizeMarket(r.Market)} / {NormalizeMarketType(r.MarketType)}", inline: true)
+            .AddField("Trends",
+                $"{GetTrendEmoji(r.MarketStructure.ShortTermTrend)} Short-term: {NormalizeTrend(r.MarketStructure.ShortTermTrend)}\n" +
+                $"{GetTrendEmoji(r.MarketStructure.MidTermTrend)} Mid-term:   {NormalizeTrend(r.MarketStructure.MidTermTrend)}\n" +
+                $"{GetTrendEmoji(r.MarketStructure.LongTermTrend)} Long-term:  {NormalizeTrend(r.MarketStructure.LongTermTrend)}",
+                inline: true)
+            .AddField("\u200B", "\u200B", inline: true);
 
-        AppendIndicatorField(builder, r.Indicators);
+        AppendIndicatorFields(builder, r.Indicators);
         if (r.Decision != TradeDecision.Wait)
             AppendRiskManagementField(builder, r.RiskManagement, r.MarketType);
 
@@ -48,26 +51,39 @@ public sealed class AnalysisEmbedFormatter
         return builder.Build();
     }
 
-    private static void AppendIndicatorField(DiscordEmbedBuilder builder, IndicatorSnapshot indicators)
+    private static void AppendIndicatorFields(DiscordEmbedBuilder builder, IndicatorSnapshot indicators)
     {
-        var parts = new List<string>();
+        var trendParts = new List<string>();
+        AppendGroup(trendParts, "EMA", indicators.Ema);
+        AppendGroup(trendParts, "VWAP", indicators.Vwap);
+        AppendGroup(trendParts, "S/R", indicators.SupportResistance);
+        var trendVal = trendParts.Count > 0 ? string.Join("\n", trendParts) : "No data";
 
-        AppendGroup(parts, "EMA", indicators.Ema);
-        AppendGroup(parts, "MACD", indicators.Macd);
-        AppendGroup(parts, "RSI", indicators.Rsi);
-        AppendGroup(parts, "BB", indicators.BollingerBands);
-        AppendGroup(parts, "ATR", indicators.Atr);
-        AppendGroup(parts, "VolumeMa", indicators.VolumeMa);
-        AppendGroup(parts, "VWAP", indicators.Vwap);
-        AppendGroup(parts, "S/R", indicators.SupportResistance);
+        var volumeParts = new List<string>();
+        AppendGroup(volumeParts, "VolumeMa", indicators.VolumeMa);
+        var volumeVal = volumeParts.Count > 0 ? string.Join("\n", volumeParts) : "No data";
 
-        if (parts.Count == 0) return;
+        var momentumParts = new List<string>();
+        AppendGroup(momentumParts, "MACD", indicators.Macd);
+        AppendGroup(momentumParts, "RSI", indicators.Rsi);
+        AppendGroup(momentumParts, "BB", indicators.BollingerBands);
+        AppendGroup(momentumParts, "ATR", indicators.Atr);
+        var momentumVal = momentumParts.Count > 0 ? string.Join("\n", momentumParts) : "No data";
 
-        var value = string.Join("\n", parts);
+        trendVal = TruncateFieldValue(trendVal);
+        volumeVal = TruncateFieldValue(volumeVal);
+        momentumVal = TruncateFieldValue(momentumVal);
+
+        builder.AddField("📈 Trend", trendVal, inline: true);
+        builder.AddField("📊 Volume", volumeVal, inline: true);
+        builder.AddField("⚡ Momentum", momentumVal, inline: true);
+    }
+
+    private static string TruncateFieldValue(string value)
+    {
         if (value.Length > FieldValueMaxLength)
-            value = value[..(FieldValueMaxLength - 3)] + "...";
-
-        builder.AddField("Indicators", value);
+            return value[..(FieldValueMaxLength - 3)] + "...";
+        return value;
     }
 
     private static void AppendGroup(List<string> parts, string name, Dictionary<string, float> values)
@@ -117,10 +133,18 @@ public sealed class AnalysisEmbedFormatter
 
     private static string NormalizeDecision(TradeDecision decision) => decision switch
     {
-        TradeDecision.Buy => "BUY",
-        TradeDecision.Sell => "SELL",
-        TradeDecision.Wait => "WAIT",
+        TradeDecision.Buy => "🟢 BUY",
+        TradeDecision.Sell => "🔴 SELL",
+        TradeDecision.Wait => "🟡 WAIT",
         _ => decision.ToString()
+    };
+
+    private static string GetTrendEmoji(TrendDirection trend) => trend switch
+    {
+        TrendDirection.Uptrend => "🟢",
+        TrendDirection.Downtrend => "🔴",
+        TrendDirection.Sideways => "🟡",
+        _ => "⚪"
     };
 
     private static string NormalizeTrend(TrendDirection trend) => trend switch
