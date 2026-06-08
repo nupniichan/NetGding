@@ -31,7 +31,7 @@ public sealed class AnalysisMessageFormatter
         sb.Append("\\- Mid\\-term Trend: ").Append(Escape(NormalizeTrend(r.MarketStructure.MidTermTrend))).Append('\n');
         sb.Append("\\- Long\\-term Trend: ").Append(Escape(NormalizeTrend(r.MarketStructure.LongTermTrend))).Append('\n');
         sb.Append('\n');
-        sb.Append("*Decision:* ").Append(Escape(NormalizeDecision(r.Decision))).Append('\n');
+        sb.Append("*Decision:* ").Append(Escape($"{NormalizeDecision(r.Decision)} ({(r.Confidence * 100):F0}%)")).Append('\n');
         sb.Append('\n');
         sb.Append("*Reason:*").Append('\n');
         sb.Append(Escape(string.IsNullOrWhiteSpace(r.Reason) ? "N/A" : r.Reason)).Append('\n');

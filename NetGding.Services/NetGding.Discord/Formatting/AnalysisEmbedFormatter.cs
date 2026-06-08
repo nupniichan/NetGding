@@ -24,6 +24,7 @@ public sealed class AnalysisEmbedFormatter
             .WithColor(color)
             .WithTimestamp(r.AnalyzedAtUtc)
             .AddField("Decision", NormalizeDecision(r.Decision), inline: true)
+            .AddField("AI Confidence", $"{(r.Confidence * 100):F0}%", inline: true)
             .AddField("Price", r.CurrentPrice.ToString("F2"), inline: true)
             .AddField("Hold Time",
                 string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime,
@@ -33,8 +34,7 @@ public sealed class AnalysisEmbedFormatter
                 $"{GetTrendEmoji(r.MarketStructure.ShortTermTrend)} Short-term: {NormalizeTrend(r.MarketStructure.ShortTermTrend)}\n" +
                 $"{GetTrendEmoji(r.MarketStructure.MidTermTrend)} Mid-term:   {NormalizeTrend(r.MarketStructure.MidTermTrend)}\n" +
                 $"{GetTrendEmoji(r.MarketStructure.LongTermTrend)} Long-term:  {NormalizeTrend(r.MarketStructure.LongTermTrend)}",
-                inline: true)
-            .AddField("\u200B", "\u200B", inline: true);
+                inline: false);
 
         AppendIndicatorFields(builder, r.Indicators);
         if (r.Decision != TradeDecision.Wait)
@@ -53,30 +53,43 @@ public sealed class AnalysisEmbedFormatter
 
     private static void AppendIndicatorFields(DiscordEmbedBuilder builder, IndicatorSnapshot indicators)
     {
+        var parts = new List<string>();
+
         var trendParts = new List<string>();
         AppendGroup(trendParts, "EMA", indicators.Ema);
         AppendGroup(trendParts, "VWAP", indicators.Vwap);
         AppendGroup(trendParts, "S/R", indicators.SupportResistance);
-        var trendVal = trendParts.Count > 0 ? string.Join("\n", trendParts) : "No data";
+        if (trendParts.Count > 0)
+        {
+            parts.Add("**📈 Trend**");
+            parts.AddRange(trendParts);
+        }
 
         var volumeParts = new List<string>();
         AppendGroup(volumeParts, "VolumeMa", indicators.VolumeMa);
-        var volumeVal = volumeParts.Count > 0 ? string.Join("\n", volumeParts) : "No data";
+        if (volumeParts.Count > 0)
+        {
+            if (parts.Count > 0) parts.Add(string.Empty);
+            parts.Add("**📊 Volume**");
+            parts.AddRange(volumeParts);
+        }
 
         var momentumParts = new List<string>();
         AppendGroup(momentumParts, "MACD", indicators.Macd);
         AppendGroup(momentumParts, "RSI", indicators.Rsi);
         AppendGroup(momentumParts, "BB", indicators.BollingerBands);
         AppendGroup(momentumParts, "ATR", indicators.Atr);
-        var momentumVal = momentumParts.Count > 0 ? string.Join("\n", momentumParts) : "No data";
+        if (momentumParts.Count > 0)
+        {
+            if (parts.Count > 0) parts.Add(string.Empty);
+            parts.Add("**⚡ Momentum**");
+            parts.AddRange(momentumParts);
+        }
 
-        trendVal = TruncateFieldValue(trendVal);
-        volumeVal = TruncateFieldValue(volumeVal);
-        momentumVal = TruncateFieldValue(momentumVal);
+        var indicatorVal = parts.Count > 0 ? string.Join("\n", parts) : "No data";
+        indicatorVal = TruncateFieldValue(indicatorVal);
 
-        builder.AddField("📈 Trend", trendVal, inline: true);
-        builder.AddField("📊 Volume", volumeVal, inline: true);
-        builder.AddField("⚡ Momentum", momentumVal, inline: true);
+        builder.AddField("Indicators", indicatorVal, inline: false);
     }
 
     private static string TruncateFieldValue(string value)
