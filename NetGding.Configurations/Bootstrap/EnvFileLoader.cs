@@ -24,7 +24,10 @@ public sealed class EnvFileLoader
             ["WebApi_NewsServiceUrl"] = (WebApiOptions.SectionName, nameof(WebApiOptions.NewsServiceUrl)),
             ["WebApi_HealthProbePath"] = (WebApiOptions.SectionName, nameof(WebApiOptions.HealthProbePath)),
             ["ChartEnabled"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ChartEnabled)),
-            ["ChartImg_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ChartImgApiKey))
+            ["ChartImg_ApiKey"] = (CollectorOptions.SectionName, nameof(CollectorOptions.ChartImgApiKey)),
+            ["WebApi_ConnectionString"] = (WebApiOptions.SectionName, nameof(WebApiOptions.ConnectionString)),
+            ["AlphaVantage_ApiKey"] = (WebApiOptions.SectionName, nameof(WebApiOptions.AlphaVantageApiKey)),
+            ["CoinMarketCap_ApiKey"] = (WebApiOptions.SectionName, nameof(WebApiOptions.CoinMarketCapApiKey))
         };
 
     public async Task ReadEnvFile()
@@ -34,6 +37,12 @@ public sealed class EnvFileLoader
         var envPath = FindDotEnvPath();
         if (envPath is null)
             return;
+
+        var rootDir = Path.GetDirectoryName(envPath);
+        if (!string.IsNullOrEmpty(rootDir))
+        {
+            Environment.SetEnvironmentVariable("NETGDING_ROOT_DIR", rootDir);
+        }
 
         var envVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 

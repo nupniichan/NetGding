@@ -13,7 +13,9 @@ public sealed record AnalysisRequest(
     IReadOnlyList<OhlcvBar> Bars,
     IndicatorSnapshot Indicators,
     IReadOnlyList<NewsArticle> News,
-    MarketRegime Regime);
+    MarketRegime Regime,
+    int? FearAndGreedIndex = null,
+    string? FearAndGreedClassification = null);
 
 public interface ILlmAnalyzer
 {

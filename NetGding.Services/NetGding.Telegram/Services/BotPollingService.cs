@@ -129,6 +129,12 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
+        if (text.StartsWith("/fagi", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleFagiCommandAsync(chatId, ct).ConfigureAwait(false);
+            return;
+        }
+
         if (text.StartsWith("/latest", StringComparison.OrdinalIgnoreCase))
         {
             var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -291,12 +297,46 @@ public sealed class BotPollingService : BackgroundService
         return notification ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
 
+    private async Task HandleFagiCommandAsync(string chatId, CancellationToken ct)
+    {
+        try
+        {
+            var o = _options.CurrentValue;
+            var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/fear-and-greed";
+            var http = _httpFactory.CreateClient(WebApiHttpClient);
+            var fng = await http.GetFromJsonAsync<FearAndGreedResult>(url, ct).ConfigureAwait(false);
+
+            if (fng is null)
+            {
+                await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to fetch Fear & Greed Index."), ct).ConfigureAwait(false);
+                return;
+            }
+
+            var emoji = AnalysisMessageFormatter.GetFearAndGreedEmoji(fng.Value);
+            var msg = $"*Crypto Fear & Greed Index*\n\n" +
+                      $"*Value:* {fng.Value}\n" +
+                      $"*Classification:* {emoji} {fng.Classification}\n" +
+                      $"*Updated:* {AnalysisMessageFormatter.Escape(fng.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss"))} UTC";
+
+            await _notifier.SendTextAsync(chatId, msg, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BotPollingService: failed to handle /fagi command");
+            await _notifier.SendTextAsync(
+                chatId,
+                AnalysisMessageFormatter.Escape("Failed to fetch Fear & Greed Index. Service might be unavailable."),
+                ct).ConfigureAwait(false);
+        }
+    }
+
     private static string BuildWelcomeMessage() =>
         "*NetGding Analysis Bot*\n\n" +
         "Available commands:\n" +
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
-        "\\- /analyze `<symbol>` `<timeframe>` `<exchange>` `<market_type>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n\n" +
+        "\\- /analyze `<symbol>` `<timeframe>` `<exchange>` `<market_type>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n" +
+        "\\- /fagi \\— get the current Crypto Fear and Greed Index\n\n" +
         "Indicator legend \\(shown on chart and legend\\):\n" +
         "\\- EMAx \\— Exponential Moving Average\n" +
         "\\- BB \\— Bollinger Bands\n" +

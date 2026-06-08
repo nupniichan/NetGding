@@ -21,5 +21,7 @@ public sealed class AnalysisResult
     public float Confidence { get; set; }
     public MarketRegime MarketRegime { get; set; }
     public string SignalSource { get; set; } = "hybrid";
+    public int? FearAndGreedIndex { get; set; }
+    public string? FearAndGreedClassification { get; set; }
     public DateTime AnalyzedAtUtc { get; set; }
 }

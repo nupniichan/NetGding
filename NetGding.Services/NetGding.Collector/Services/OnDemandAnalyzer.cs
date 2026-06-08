@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Analyzer.Indicators;
@@ -24,6 +25,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly ISignalEngine _signalEngine;
     private readonly IRiskCalculator _riskCalculator;
     private readonly IChartRenderer _chartRenderer;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
@@ -33,6 +35,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         ISignalEngine signalEngine,
         IRiskCalculator riskCalculator,
         IChartRenderer chartRenderer,
+        IHttpClientFactory httpClientFactory,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
@@ -41,6 +44,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         _signalEngine = signalEngine;
         _riskCalculator = riskCalculator;
         _chartRenderer = chartRenderer;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -75,13 +79,28 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
                 "OnDemandAnalyzer: no OHLCV data for {Symbol} [{TimeFrame}]", symbol, timeframe);
         }
 
-        var news = Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
-        var indicators = ComputeIndicators(bars, timeframe);
+        var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
+
+        int? fngIndex = null;
+        string? fngClassification = null;
         var market = ResolveMarket(symbol);
+        if (market == AssetMarket.Crypto)
+        {
+            var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
+            if (fng != null)
+            {
+                fngIndex = fng.Value;
+                fngClassification = fng.Classification;
+            }
+        }
+
+        var indicators = ComputeIndicators(bars, timeframe);
         var currentPrice = bars.Count > 0 ? (decimal)bars[^1].Close : 0m;
         var regime = MarketRegimeDetector.Detect(indicators, bars.Count > 0 ? bars[^1].Close : 0);
 
-        var request = new AnalysisRequest(symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime);
+        var request = new AnalysisRequest(
+            symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime,
+            fngIndex, fngClassification);
         var signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
 
         var signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
@@ -106,6 +125,8 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             Confidence = signal.Confidence,
             MarketRegime = regime,
             SignalSource = "hybrid",
+            FearAndGreedIndex = fngIndex,
+            FearAndGreedClassification = fngClassification,
             AnalyzedAtUtc = DateTime.UtcNow
         };
 
@@ -281,4 +302,81 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
 
     private static AssetMarket ResolveMarket(string symbol) =>
         symbol.Contains('/') ? AssetMarket.Crypto : AssetMarket.Stock;
+
+    private async Task<FearAndGreedResult?> FetchFearAndGreedFromWebApiAsync(CancellationToken ct)
+    {
+        var o = _options.CurrentValue;
+        if (string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
+        {
+            _logger.LogWarning("OnDemandAnalyzer: WebApiBaseUrl is not configured, returning null for Fear and Greed Index.");
+            return null;
+        }
+
+        var client = _httpClientFactory.CreateClient();
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/fear-and-greed";
+
+        try
+        {
+            var response = await client.GetFromJsonAsync<FearAndGreedResult>(url, ct).ConfigureAwait(false);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OnDemandAnalyzer: failed to fetch Fear & Greed Index from WebAPI");
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<NetGding.Contracts.Models.News.NewsArticle>> FetchNewsFromWebApiAsync(string symbol, CancellationToken ct)
+    {
+        var o = _options.CurrentValue;
+        if (string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
+        {
+            _logger.LogWarning("OnDemandAnalyzer: WebApiBaseUrl is not configured, returning empty news.");
+            return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
+        }
+
+        var client = _httpClientFactory.CreateClient();
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit=10";
+
+        try
+        {
+            var response = await client.GetFromJsonAsync<WebApiNewsResponse>(url, ct).ConfigureAwait(false);
+            if (response?.Items is null || response.Items.Count == 0)
+                return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
+
+            return response.Items.Select(dto => new NetGding.Contracts.Models.News.NewsArticle(
+                dto.Id,
+                dto.Title,
+                "", // Author
+                dto.Source,
+                dto.Summary,
+                dto.Url,
+                dto.PublishedAtUtc, // CreatedAtUtc
+                dto.PublishedAtUtc, // UpdatedAtUtc
+                new[] { dto.Symbol }, // Symbols
+                "" // ImageUrl
+            )).ToArray();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OnDemandAnalyzer: failed to fetch news from WebAPI for {Symbol}", symbol);
+            return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
+        }
+    }
+
+    private sealed record WebApiNewsResponse(
+        string Symbol,
+        int Count,
+        IReadOnlyList<WebApiNewsItemDto> Items);
+
+    private sealed record WebApiNewsItemDto(
+        long Id,
+        string Symbol,
+        string Title,
+        string Source,
+        string Url,
+        DateTime PublishedAtUtc,
+        string Summary,
+        string? Sentiment);
 }

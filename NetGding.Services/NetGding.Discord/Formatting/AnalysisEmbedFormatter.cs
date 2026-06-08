@@ -29,12 +29,18 @@ public sealed class AnalysisEmbedFormatter
             .AddField("Hold Time",
                 string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime,
                 inline: true)
-            .AddField("Market", $"{NormalizeMarket(r.Market)} / {NormalizeMarketType(r.MarketType)}", inline: true)
-            .AddField("Trends",
-                $"{GetTrendEmoji(r.MarketStructure.ShortTermTrend)} Short-term: {NormalizeTrend(r.MarketStructure.ShortTermTrend)}\n" +
-                $"{GetTrendEmoji(r.MarketStructure.MidTermTrend)} Mid-term:   {NormalizeTrend(r.MarketStructure.MidTermTrend)}\n" +
-                $"{GetTrendEmoji(r.MarketStructure.LongTermTrend)} Long-term:  {NormalizeTrend(r.MarketStructure.LongTermTrend)}",
-                inline: false);
+            .AddField("Market", $"{NormalizeMarket(r.Market)} / {NormalizeMarketType(r.MarketType)}", inline: true);
+
+        if (r.FearAndGreedIndex.HasValue)
+        {
+            builder.AddField("Fear & Greed", $"{GetFearAndGreedEmoji(r.FearAndGreedIndex.Value)} {r.FearAndGreedIndex.Value} ({r.FearAndGreedClassification})", inline: true);
+        }
+
+        builder.AddField("Trends",
+            $"{GetTrendEmoji(r.MarketStructure.ShortTermTrend)} Short-term: {NormalizeTrend(r.MarketStructure.ShortTermTrend)}\n" +
+            $"{GetTrendEmoji(r.MarketStructure.MidTermTrend)} Mid-term:   {NormalizeTrend(r.MarketStructure.MidTermTrend)}\n" +
+            $"{GetTrendEmoji(r.MarketStructure.LongTermTrend)} Long-term:  {NormalizeTrend(r.MarketStructure.LongTermTrend)}",
+            inline: false);
 
         AppendIndicatorFields(builder, r.Indicators);
         if (r.Decision != TradeDecision.Wait)
@@ -179,5 +185,14 @@ public sealed class AnalysisEmbedFormatter
         "1d" => "D1",
         "1w" => "W1",
         _ => tf.ToUpperInvariant()
+    };
+
+    public static string GetFearAndGreedEmoji(int value) => value switch
+    {
+        <= 25 => "🔴",
+        <= 45 => "🟠",
+        <= 55 => "🟡",
+        <= 75 => "🟢",
+        _ => "🚀"
     };
 }

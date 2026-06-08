@@ -22,6 +22,10 @@ public sealed class AnalysisMessageFormatter
         sb.Append("*Timeframe:* ").Append(Escape(NormalizeTimeframe(r.Timeframe))).Append('\n');
         sb.Append('\n');
         sb.Append("*Current Price:* ").Append(Escape(r.CurrentPrice.ToString("F2"))).Append('\n');
+        if (r.FearAndGreedIndex.HasValue)
+        {
+            sb.Append("*Fear & Greed:* ").Append(Escape($"{GetFearAndGreedEmoji(r.FearAndGreedIndex.Value)} {r.FearAndGreedIndex.Value} ({r.FearAndGreedClassification})")).Append('\n');
+        }
         sb.Append('\n');
         sb.Append("*Indicators:*").Append('\n');
         AppendIndicators(sb, r.Indicators);
@@ -146,4 +150,13 @@ public sealed class AnalysisMessageFormatter
         string.IsNullOrEmpty(text)
             ? string.Empty
             : s_escapeRegex.Replace(text, @"\$1");
+
+    public static string GetFearAndGreedEmoji(int value) => value switch
+    {
+        <= 25 => "🔴",
+        <= 45 => "🟠",
+        <= 55 => "🟡",
+        <= 75 => "🟢",
+        _ => "🚀"
+    };
 }

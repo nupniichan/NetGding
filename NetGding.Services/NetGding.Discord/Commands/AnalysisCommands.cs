@@ -58,7 +58,8 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Available commands:**\n\n" +
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
-                "• `/analyze <symbol> <timeframe> <exchange> <market_type>` — run live analysis\n\n" +
+                "• `/analyze <symbol> <timeframe> <exchange> <market_type>` — run live analysis\n" +
+                "• `/fagi` — get the current Crypto Fear and Greed Index\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
                 "**Supported exchanges:** `binance`, `okx`\n" +
                 "**Supported market types:** `spot`, `future`\n\n" +
@@ -214,6 +215,56 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         return notification ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
+
+    [SlashCommand("fagi", "Get the current Crypto Fear and Greed Index")]
+    public async Task FagiAsync(InteractionContext ctx)
+    {
+        await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource).ConfigureAwait(false);
+
+        try
+        {
+            var fng = await FetchFearAndGreedAsync().ConfigureAwait(false);
+
+            var emoji = AnalysisEmbedFormatter.GetFearAndGreedEmoji(fng.Value);
+            var color = GetFearAndGreedColor(fng.Value);
+
+            var embed = new DiscordEmbedBuilder()
+                .WithTitle("Crypto Fear & Greed Index")
+                .WithColor(color)
+                .AddField("Value", fng.Value.ToString(), inline: true)
+                .AddField("Classification", $"{emoji} {fng.Classification}", inline: true)
+                .WithTimestamp(fng.TimestampUtc)
+                .WithFooter("Data provided by CoinMarketCap or Alternative.me")
+                .Build();
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AnalysisCommands: failed to fetch Fear & Greed Index");
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().WithContent("Failed to fetch Fear & Greed Index. Please try again in a moment.")).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<FearAndGreedResult> FetchFearAndGreedAsync()
+    {
+        var o = _options.CurrentValue;
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/fear-and-greed";
+        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<FearAndGreedResult>(s_jsonOptions).ConfigureAwait(false);
+        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
+    }
+
+    private static DiscordColor GetFearAndGreedColor(int value) => value switch
+    {
+        <= 25 => new DiscordColor(0xD63031),
+        <= 45 => new DiscordColor(0xE67E22),
+        <= 55 => new DiscordColor(0xF1C40F),
+        <= 75 => new DiscordColor(0x2ECC71),
+        _ => new DiscordColor(0x00B894)
+    };
 
     private static string NormalizeSymbol(string symbol)
     {

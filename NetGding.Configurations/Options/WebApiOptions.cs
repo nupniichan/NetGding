@@ -20,4 +20,7 @@ public sealed class WebApiOptions
     public string[] Symbols { get; set; } = [];
     public string[] BarTimeFrames { get; set; } = [];
     public string OutputDirectory { get; set; } = "";
+    public string ConnectionString { get; set; } = "Data Source=db/trading.db";
+    public string AlphaVantageApiKey { get; set; } = "";
+    public string CoinMarketCapApiKey { get; set; } = "";
 }

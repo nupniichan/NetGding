@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NetGding.Analyzer.FinBert;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
@@ -22,15 +23,18 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _httpClient;
     private readonly LlmOptions _options;
+    private readonly IFinBertSentimentAnalyzer _sentimentAnalyzer;
     private readonly ILogger<LlmAnalyzer> _logger;
 
     public LlmAnalyzer(
         HttpClient httpClient,
         IOptions<LlmOptions> options,
+        IFinBertSentimentAnalyzer sentimentAnalyzer,
         ILogger<LlmAnalyzer> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _sentimentAnalyzer = sentimentAnalyzer;
         _logger = logger;
     }
 
@@ -38,7 +42,23 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         AnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
-        var prompt = BuildPrompt(request);
+        var sentiments = new Dictionary<long, string>();
+        foreach (var article in request.News)
+        {
+            try
+            {
+                var prediction = await _sentimentAnalyzer.AnalyzeAsync(article.Headline, cancellationToken)
+                    .ConfigureAwait(false);
+                sentiments[article.Id] = $"{prediction.Label} (Score: {prediction.Score:F2})";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to analyze sentiment for article {Id}", article.Id);
+                sentiments[article.Id] = "Neutral (Score: 0.00)";
+            }
+        }
+
+        var prompt = BuildPrompt(request, sentiments);
 
         var raw = await CallChatCompletionAsync(prompt, cancellationToken)
             .ConfigureAwait(false);
@@ -46,7 +66,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         return ParseResponse(raw, request);
     }
 
-    private string BuildPrompt(AnalysisRequest req)
+    private string BuildPrompt(AnalysisRequest req, Dictionary<long, string> sentiments)
     {
         var sb = new StringBuilder();
 
@@ -64,6 +84,11 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         sb.AppendLine("  - RANGING Regime: Prioritize mean-reversion. Look for momentum exhaustion (Weak or Divergence) near Support/Resistance bands and Bollinger Band extremes. Ignore lagging EMA trend stackings; focus on bounce/rejection signals.");
         sb.AppendLine("  - VOLATILE Regime: Exercise high caution. Look for key structural breakouts (Bollinger Band expansions, extreme ATR relative to price). Prioritize conservative analysis and reduce confidence if indicators conflict.");
         sb.AppendLine();
+        if (req.FearAndGreedIndex.HasValue)
+        {
+            sb.AppendLine($"  Global Crypto Sentiment (Fear & Greed Index): {req.FearAndGreedIndex.Value} ({req.FearAndGreedClassification})");
+            sb.AppendLine();
+        }
         sb.AppendLine("INDICATOR INTERPRETATION GUIDELINES (Use Confluence):");
         sb.AppendLine("  1. Trend Alignment: Verify EMA levels (e.g., 9, 21, 50, 100, 200). Stacking alignment indicates trend strength. Flat or tangled lines indicate sideways/ranging.");
         sb.AppendLine("  2. Momentum Validation: MACD histogram expansion/contraction and RSI levels. Identify any divergence between price action and momentum (e.g. price making new highs but RSI or MACD showing lower highs) which strongly signals trend exhaustion.");
@@ -124,7 +149,8 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             for (int i = 0; i < count; i++)
             {
                 var n = req.News[i];
-                sb.AppendLine($"  - [{n.CreatedAtUtc:yyyy-MM-dd HH:mm}] {n.Headline}");
+                var sentimentStr = sentiments.TryGetValue(n.Id, out var s) ? s : "Neutral";
+                sb.AppendLine($"  - [{n.CreatedAtUtc:yyyy-MM-dd HH:mm}] {n.Headline} (FinBERT Sentiment: {sentimentStr})");
                 if (!string.IsNullOrWhiteSpace(n.Summary))
                     sb.AppendLine($"    {n.Summary[..Math.Min(n.Summary.Length, 200)]}");
             }
@@ -145,7 +171,9 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         sb.AppendLine("  - trend: Use 'bullish' for upward structure, 'bearish' for downward structure, or 'neutral' for consolidation/ranging.");
         sb.AppendLine("  - momentum: Use 'strong' for high directional momentum, 'weak' for flat/consolidating, or 'divergence' for exhaustion/reversal indications (RSI/MACD moving opposite to price).");
         sb.AppendLine("  - volatility: Use 'high' (ATR relative to price is high, or Bollinger Bands wide) or 'low' (ATR is low, or Bollinger Bands narrow/squeezing).");
-        sb.AppendLine("  - confidence: Score 0.0-1.0. High confidence (0.8+) requires strong confluence of multiple indicators (e.g. Trend, Momentum, S/R, VWAP alignment). Lower confidence (0.5-0.7) if indicators diverge or key resistance/support levels are nearby.");
+        sb.AppendLine("  - confidence: Score 0.0-1.0 (representing 0% to 100% confidence). Calculate this score strictly based on indicator confluence:");
+        sb.AppendLine("    * If all key indicators (EMA trends, MACD, RSI, Bollinger Bands, Support/Resistance proximity, VWAP) agree on the direction -> Score: 0.90 to 0.95.");
+        sb.AppendLine("    * If key indicators are conflicting (e.g., RSI is deeply oversold but EMA stack remains strongly bearish, or price is ranging but indicators show mixed signals) -> Score: MUST be below 0.50. This indicates high risk or incomplete criteria, which will trigger the system to make a WAIT decision.");
         sb.AppendLine("  - reason: A highly professional 1-2 sentence commentary. Use sophisticated institutional terminology (e.g. 'liquidity sweep', 'momentum exhaustion near major resistance', 'bullish EMA structure supported by institutional volume above VWAP'). Do not say 'the trend is bullish' or reference JSON field values directly.");
         sb.AppendLine("  - newsImpact: -1.0 (strongly negative) to 1.0 (strongly positive), 0.0 if neutral or no news.");
 

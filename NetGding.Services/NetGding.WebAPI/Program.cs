@@ -1,7 +1,9 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.WebApi.Endpoints;
+using NetGding.WebApi.Persistence;
 using NetGding.WebApi.Services;
 
 await new EnvFileLoader().ReadEnvFile();
@@ -39,9 +41,37 @@ builder.Services.AddHttpClient("HealthProbe", (sp, client) =>
 builder.Services.AddSingleton<ITelegramForwarder, TelegramForwarder>();
 builder.Services.AddSingleton<IDiscordForwarder, DiscordForwarder>();
 builder.Services.AddSingleton<ICollectorGateway, CollectorGateway>();
-builder.Services.AddSingleton<IAnalysisResultStore, InMemoryAnalysisResultStore>();
+builder.Services.AddDbContext<TradingDbContext>((sp, options) =>
+{
+    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
+    var connectionString = o.ConnectionString;
+
+    if (connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+    {
+        var connBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+        var dataSource = connBuilder.DataSource;
+        if (!string.IsNullOrEmpty(dataSource) && !Path.IsPathRooted(dataSource))
+        {
+            var rootDir = Environment.GetEnvironmentVariable("NETGDING_ROOT_DIR") ?? AppContext.BaseDirectory;
+            var fullPath = Path.GetFullPath(Path.Combine(rootDir, dataSource));
+
+            var dir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            connBuilder.DataSource = fullPath;
+            connectionString = connBuilder.ToString();
+        }
+    }
+
+    options.UseSqlite(connectionString);
+});
+builder.Services.AddScoped<IAnalysisResultStore, SqliteAnalysisResultStore>();
 builder.Services.AddSingleton<ISymbolMetadataProvider, SymbolMetadataProvider>();
-builder.Services.AddSingleton<INewsProvider, FileSystemNewsProvider>();
+builder.Services.AddHttpClient<INewsProvider, AlphaVantageNewsProvider>();
+builder.Services.AddHttpClient<IFearAndGreedProvider, CoinMarketCapFearAndGreedProvider>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -50,6 +80,24 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+    dbContext.Database.EnsureCreated();
+
+    try
+    {
+        dbContext.Database.ExecuteSqlRaw("ALTER TABLE AnalysisResults ADD COLUMN FearAndGreedIndex INTEGER NULL;");
+    }
+    catch (Exception) { }
+
+    try
+    {
+        dbContext.Database.ExecuteSqlRaw("ALTER TABLE AnalysisResults ADD COLUMN FearAndGreedClassification TEXT NULL;");
+    }
+    catch (Exception) { }
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -66,5 +114,6 @@ app.MapSupportEndpoints();
 app.MapHealthEndpoints();
 app.MapIndicatorEndpoints();
 app.MapNewsEndpoints();
+app.MapSentimentEndpoints();
 
 await app.RunAsync().ConfigureAwait(false);

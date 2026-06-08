@@ -42,6 +42,8 @@ services:
       WebApi__CollectorServiceUrl: http://collector:8081
     ports:
       - "5001:8080"
+    volumes:
+      - ./db:/app/db
     restart: unless-stopped
 
   collector:
