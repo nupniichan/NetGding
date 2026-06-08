@@ -58,7 +58,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Available commands:**\n\n" +
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
-                "• `/analyze <symbol> <timeframe> <exchange> <market_type>` — run live analysis\n" +
+                "• `/analyze <symbol> <timeframe> [exchange] [market_type]` — run live analysis (defaults: binance, spot)\n" +
                 "• `/fagi` — get the current Crypto Fear and Greed Index\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
                 "**Supported exchanges:** `binance`, `okx`\n" +
@@ -70,7 +70,8 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "• S/R — Support/Resistance levels\n" +
                 "• Entry/SL/TP/Buy — Risk management price levels\n\n" +
                 "**Examples:**\n" +
-                "  `/analyze BTC 4h binance spot`\n" +
+                "  `/analyze BTC 4h`\n" +
+                "  `/analyze BTC 4h okx future`\n" +
                 "  `/latest BTC`\n\n" +
                 "D1+ analysis results are pushed automatically after each bar.")
             .Build();
@@ -110,8 +111,8 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         InteractionContext ctx,
         [Option("symbol", "Symbol e.g. BTC")] string symbol,
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe,
-        [Option("exchange", "Exchange: binance, okx")] string exchange,
-        [Option("market_type", "Market type: spot, future")] string marketType)
+        [Option("exchange", "Exchange: binance, okx")] string exchange = "binance",
+        [Option("market_type", "Market type: spot, future")] string marketType = "spot")
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();

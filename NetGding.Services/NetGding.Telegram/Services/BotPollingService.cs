@@ -175,19 +175,19 @@ public sealed class BotPollingService : BackgroundService
     {
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        if (parts.Length < 5)
+        if (parts.Length < 3)
         {
             await _notifier.SendTextAsync(
                 chatId,
-                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe> <exchange> <market_type>  e.g. /analyze BTC/USD 4h binance spot"),
+                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe> [<exchange>] [<market_type>]  e.g. /analyze BTC/USD 4h (defaults: binance, spot)"),
                 ct).ConfigureAwait(false);
             return;
         }
 
         var symbol = parts[1].Trim();
         var timeframe = parts[2].Trim().ToLowerInvariant();
-        var exchange = parts[3].Trim().ToLowerInvariant();
-        var marketType = parts[4].Trim().ToLowerInvariant();
+        var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
+        var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
 
         var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -335,7 +335,7 @@ public sealed class BotPollingService : BackgroundService
         "Available commands:\n" +
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
-        "\\- /analyze `<symbol>` `<timeframe>` `<exchange>` `<market_type>` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m\\)\n" +
+        "\\- /analyze `<symbol>` `<timeframe>` `[<exchange>]` `[<market_type>]` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m, defaults: binance, spot\\)\n" +
         "\\- /fagi \\— get the current Crypto Fear and Greed Index\n\n" +
         "Indicator legend \\(shown on chart and legend\\):\n" +
         "\\- EMAx \\— Exponential Moving Average\n" +
@@ -344,7 +344,8 @@ public sealed class BotPollingService : BackgroundService
         "\\- S/R \\— Support/Resistance levels\n" +
         "\\- Entry/SL/TP/Buy \\— Risk management price levels\n\n" +
         "Examples:\n" +
-        "  /analyze BTC 4h binance spot\n" +
+        "  /analyze BTC 4h\n" +
+        "  /analyze BTC 4h okx future\n" +
         "  /latest BTC/USD\n\n" +
         "D1\\+ analysis results are still pushed automatically after each bar\\.";
 
