@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using NetGding.Analyzer.FinBert;
 using NetGding.Analyzer.Llm;
 using NetGding.Analyzer.Signal;
 using NetGding.ChartRenderer;
@@ -24,10 +23,6 @@ builder.Services
 builder.Services
     .AddOptions<SignalEngineOptions>()
     .BindConfiguration(SignalEngineOptions.SectionName);
-
-builder.Services
-    .AddOptions<FinBertOptions>()
-    .BindConfiguration(FinBertOptions.SectionName);
 
 builder.Services.AddHttpClient(nameof(BinanceMarketDataCollector));
 builder.Services.AddHttpClient(nameof(OkxMarketDataCollector));
@@ -68,22 +63,12 @@ builder.Services.AddHttpClient(nameof(LlmAnalyzer), (sp, client) =>
     if (!string.IsNullOrWhiteSpace(o.BaseUrl))
         client.BaseAddress = new Uri(o.BaseUrl);
 });
-builder.Services.AddHttpClient(nameof(FinBertSentimentAnalyzer));
-builder.Services.AddSingleton<IFinBertSentimentAnalyzer>(sp =>
-{
-    var options = sp.GetRequiredService<IOptions<FinBertOptions>>();
-    var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var logger = sp.GetRequiredService<ILogger<FinBertSentimentAnalyzer>>();
-    return new FinBertSentimentAnalyzer(httpFactory.CreateClient(nameof(FinBertSentimentAnalyzer)), options, logger);
-});
-
 builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<LlmOptions>>();
     var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var sentimentAnalyzer = sp.GetRequiredService<IFinBertSentimentAnalyzer>();
     var logger = sp.GetRequiredService<ILogger<LlmAnalyzer>>();
-    return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), options, sentimentAnalyzer, logger);
+    return new LlmAnalyzer(httpFactory.CreateClient(nameof(LlmAnalyzer)), options, logger);
 });
 
 builder.Services.AddSingleton<ISignalEngine, SignalEngine>();

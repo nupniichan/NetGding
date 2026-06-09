@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NetGding.Analyzer.FinBert;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
@@ -23,18 +22,15 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _httpClient;
     private readonly LlmOptions _options;
-    private readonly IFinBertSentimentAnalyzer _sentimentAnalyzer;
     private readonly ILogger<LlmAnalyzer> _logger;
 
     public LlmAnalyzer(
         HttpClient httpClient,
         IOptions<LlmOptions> options,
-        IFinBertSentimentAnalyzer sentimentAnalyzer,
         ILogger<LlmAnalyzer> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
-        _sentimentAnalyzer = sentimentAnalyzer;
         _logger = logger;
     }
 
@@ -42,23 +38,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         AnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
-        var sentiments = new Dictionary<long, string>();
-        foreach (var article in request.News)
-        {
-            try
-            {
-                var prediction = await _sentimentAnalyzer.AnalyzeAsync(article.Headline, cancellationToken)
-                    .ConfigureAwait(false);
-                sentiments[article.Id] = $"{prediction.Label} (Score: {prediction.Score:F2})";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to analyze sentiment for article {Id}", article.Id);
-                sentiments[article.Id] = "Neutral (Score: 0.00)";
-            }
-        }
-
-        var prompt = BuildPrompt(request, sentiments);
+        var prompt = BuildPrompt(request);
 
         var raw = await CallChatCompletionAsync(prompt, cancellationToken)
             .ConfigureAwait(false);
@@ -66,7 +46,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         return ParseResponse(raw, request);
     }
 
-    private string BuildPrompt(AnalysisRequest req, Dictionary<long, string> sentiments)
+    private string BuildPrompt(AnalysisRequest req)
     {
         var sb = new StringBuilder();
 
@@ -149,8 +129,7 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
             for (int i = 0; i < count; i++)
             {
                 var n = req.News[i];
-                var sentimentStr = sentiments.TryGetValue(n.Id, out var s) ? s : "Neutral";
-                sb.AppendLine($"  - [{n.CreatedAtUtc:yyyy-MM-dd HH:mm}] {n.Headline} (FinBERT Sentiment: {sentimentStr})");
+                sb.AppendLine($"  - [{n.CreatedAtUtc:yyyy-MM-dd HH:mm}] {n.Headline}");
                 if (!string.IsNullOrWhiteSpace(n.Summary))
                     sb.AppendLine($"    {n.Summary[..Math.Min(n.Summary.Length, 200)]}");
             }
