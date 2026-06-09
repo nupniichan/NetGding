@@ -53,6 +53,8 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         string timeframe,
         string exchange,
         string marketType,
+        string? chartSymbol = null,
+        bool chartOnly = false,
         CancellationToken ct = default)
     {
         if (!TimeframeResolver.TryResolve(timeframe, out var tf))
@@ -79,50 +81,61 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
                 "OnDemandAnalyzer: no OHLCV data for {Symbol} [{TimeFrame}]", symbol, timeframe);
         }
 
-        var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
-
-        int? fngIndex = null;
-        string? fngClassification = null;
         var market = ResolveMarket(symbol);
-        if (market == AssetMarket.Crypto)
-        {
-            var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
-            if (fng != null)
-            {
-                fngIndex = fng.Value;
-                fngClassification = fng.Classification;
-            }
-        }
-
         var indicators = ComputeIndicators(bars, timeframe);
         var currentPrice = bars.Count > 0 ? (decimal)bars[^1].Close : 0m;
         var regime = MarketRegimeDetector.Detect(indicators, bars.Count > 0 ? bars[^1].Close : 0);
 
-        var request = new AnalysisRequest(
-            symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime,
-            fngIndex, fngClassification);
-        var signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
+        int? fngIndex = null;
+        string? fngClassification = null;
+        LlmSignal? signal = null;
+        SignalResult? signalResult = null;
+        RiskManagement? risk = null;
+        MarketStructure? marketStructure = null;
 
-        var signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
-        var risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, resolvedMarketType);
-        var marketStructure = ComputeMarketStructure(indicators);
+        bool isChartRequest = chartOnly || !string.IsNullOrWhiteSpace(chartSymbol);
+
+        if (!isChartRequest)
+        {
+            var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
+
+            if (market == AssetMarket.Crypto)
+            {
+                var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
+                if (fng != null)
+                {
+                    fngIndex = fng.Value;
+                    fngClassification = fng.Classification;
+                }
+            }
+
+            var request = new AnalysisRequest(
+                symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime,
+                fngIndex, fngClassification);
+            signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
+
+            signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
+            risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, resolvedMarketType);
+            marketStructure = ComputeMarketStructure(indicators);
+        }
 
         var result = new AnalysisResult
         {
             Symbol = symbol,
+            ChartSymbol = chartSymbol,
             Market = market,
             MarketType = resolvedMarketType,
             Timeframe = timeframe,
             CurrentPrice = currentPrice,
             Indicators = indicators,
-            MarketStructure = marketStructure,
-            Decision = signalResult.Decision,
-            Reason = BuildReason(signal, signalResult),
+            MarketStructure = marketStructure ?? new MarketStructure(),
+            Decision = signalResult?.Decision ?? TradeDecision.Wait,
+            Reason = (signal != null && signalResult != null) ? BuildReason(signal, signalResult) : "Chart Only",
             ExpectedHoldTime = ResolveHoldTimeHint(timeframe),
-            RiskManagement = risk,
-            NewsSentiment = ResolveNewsSentiment(signal.NewsImpact),
+            RiskManagement = risk ?? new RiskManagement(),
+            NewsSentiment = signal != null ? ResolveNewsSentiment(signal.NewsImpact) : "none",
             NewsSummary = "",
-            Confidence = signal.Confidence,
+            Confidence = signal?.Confidence ?? 0f,
             MarketRegime = regime,
             SignalSource = "hybrid",
             FearAndGreedIndex = fngIndex,

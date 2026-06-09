@@ -46,56 +46,62 @@ public sealed class AnalysisChartRenderer : IChartRenderer
 
         try
         {
-            var tvSymbol = FormatTradingViewSymbol(exchange, result.Symbol, result.MarketType);
+            var tvSymbol = !string.IsNullOrWhiteSpace(result.ChartSymbol)
+                ? result.ChartSymbol
+                : FormatTradingViewSymbol(exchange, result.Symbol, result.MarketType);
             var tvInterval = NormalizeTimeframe(result.Timeframe);
 
-            var studiesList = new List<object>
+            var studiesList = new List<object>();
+            if (string.IsNullOrWhiteSpace(result.ChartSymbol))
             {
-                new { name = "Volume" }
-            };
+                studiesList.Add(new { name = "Volume" });
+            }
 
             var potentialDrawings = new List<object>();
 
-            var supports = new List<dynamic>();
-            var resistances = new List<dynamic>();
-
-            foreach (var (key, val) in result.Indicators.SupportResistance)
+            if (string.IsNullOrWhiteSpace(result.ChartSymbol))
             {
-                bool isSupport = key.StartsWith('S');
-                var distance = Math.Abs((double)result.CurrentPrice - (double)val);
-                var item = new
+                var supports = new List<dynamic>();
+                var resistances = new List<dynamic>();
+
+                foreach (var (key, val) in result.Indicators.SupportResistance)
                 {
-                    Distance = distance,
-                    Key = key,
-                    Val = (double)val,
-                    IsSupport = isSupport
-                };
+                    bool isSupport = key.StartsWith('S');
+                    var distance = Math.Abs((double)result.CurrentPrice - (double)val);
+                    var item = new
+                    {
+                        Distance = distance,
+                        Key = key,
+                        Val = (double)val,
+                        IsSupport = isSupport
+                    };
 
-                if (isSupport)
-                    supports.Add(item);
-                else
-                    resistances.Add(item);
-            }
+                    if (isSupport)
+                        supports.Add(item);
+                    else
+                        resistances.Add(item);
+                }
 
-            var closestSupport = supports.OrderBy(x => (double)x.Distance).FirstOrDefault();
-            var closestResistance = resistances.OrderBy(x => (double)x.Distance).FirstOrDefault();
+                var closestSupport = supports.OrderBy(x => (double)x.Distance).FirstOrDefault();
+                var closestResistance = resistances.OrderBy(x => (double)x.Distance).FirstOrDefault();
 
-            if (closestSupport != null)
-            {
-                potentialDrawings.Add(CreateHorizontalLineDrawing(closestSupport.Key, closestSupport.Val, true));
-            }
-            if (closestResistance != null)
-            {
-                potentialDrawings.Add(CreateHorizontalLineDrawing(closestResistance.Key, closestResistance.Val, false));
-            }
+                if (closestSupport != null)
+                {
+                    potentialDrawings.Add(CreateHorizontalLineDrawing(closestSupport.Key, closestSupport.Val, true));
+                }
+                if (closestResistance != null)
+                {
+                    potentialDrawings.Add(CreateHorizontalLineDrawing(closestResistance.Key, closestResistance.Val, false));
+                }
 
-            var remainingSr = supports.Concat(resistances)
-                .Where(x => x != closestSupport && x != closestResistance)
-                .OrderBy(x => (double)x.Distance);
+                var remainingSr = supports.Concat(resistances)
+                    .Where(x => x != closestSupport && x != closestResistance)
+                    .OrderBy(x => (double)x.Distance);
 
-            foreach (var item in remainingSr)
-            {
-                potentialDrawings.Add(CreateHorizontalLineDrawing(item.Key, item.Val, item.IsSupport));
+                foreach (var item in remainingSr)
+                {
+                    potentialDrawings.Add(CreateHorizontalLineDrawing(item.Key, item.Val, item.IsSupport));
+                }
             }
 
             int maxDrawings = Math.Max(0, 3 - studiesList.Count);

@@ -1,4 +1,6 @@
+using System.Linq;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
@@ -7,6 +9,7 @@ using Microsoft.Extensions.Options;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
+using NetGding.Contracts.Models.MarketData;
 using NetGding.Telegram.Formatting;
 
 namespace NetGding.Telegram.Services;
@@ -168,6 +171,25 @@ public sealed class BotPollingService : BackgroundService
         if (text.StartsWith("/analyze", StringComparison.OrdinalIgnoreCase))
         {
             await HandleAnalyzeCommandAsync(text, chatId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (text.StartsWith("/chart", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleChartCommandAsync(text, chatId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (text.StartsWith("/news", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleNewsCommandAsync(text, chatId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (text.StartsWith("/dom", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleDomCommandAsync(text, chatId, ct).ConfigureAwait(false);
+            return;
         }
     }
 
@@ -242,7 +264,7 @@ public sealed class BotPollingService : BackgroundService
             {
                 try
                 {
-                    notification = await FetchOnDemandAnalysisAsync(candidate, timeframe, exchange, marketType, ct)
+                    notification = await FetchOnDemandAnalysisAsync(candidate, timeframe, exchange, marketType, null, false, ct)
                         .ConfigureAwait(false);
                     break;
                 }
@@ -273,11 +295,13 @@ public sealed class BotPollingService : BackgroundService
         string timeframe,
         string exchange,
         string marketType,
+        string? chartSymbol,
+        bool chartOnly,
         CancellationToken ct)
     {
         var o = _options.CurrentValue;
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var payload = new { symbol, timeframe, exchange, marketType };
+        var payload = new { symbol, timeframe, exchange, marketType, chartSymbol, chartOnly };
 
         var response = await HttpRetryHelper.ExecuteAsync(
             () => _httpFactory.CreateClient(WebApiHttpClient).PostAsJsonAsync(url, payload, ct),
@@ -336,6 +360,9 @@ public sealed class BotPollingService : BackgroundService
         "\\- /help \\— show available commands\n" +
         "\\- /latest `<symbol>` \\— get the cached analysis for a symbol \\(D1\\+\\)\n" +
         "\\- /analyze `<symbol>` `<timeframe>` `[<exchange>]` `[<market_type>]` \\— run live analysis \\(15m, 1h, 4h, 1d, 1w, 1m, defaults: binance, spot\\)\n" +
+        "\\- /chart `[<symbol>]` `[<timeframe>]` `[<exchange>]` `[<market_type>]` \\— get live chart \\(defaults: BTC, 4h, binance, spot\\)\n" +
+        "\\- /news `[<symbol>]` `[<limit>]` \\— get recent news articles \\(defaults: BTC, 5\\)\n" +
+        "\\- /dom `[<timeframe>]` \\— check BTC dominance chart and DOM \\(default: 4h\\)\n" +
         "\\- /fagi \\— get the current Crypto Fear and Greed Index\n\n" +
         "Indicator legend \\(shown on chart and legend\\):\n" +
         "\\- EMAx \\— Exponential Moving Average\n" +
@@ -345,9 +372,235 @@ public sealed class BotPollingService : BackgroundService
         "\\- Entry/SL/TP/Buy \\— Risk management price levels\n\n" +
         "Examples:\n" +
         "  /analyze BTC 4h\n" +
-        "  /analyze BTC 4h okx future\n" +
+        "  /chart BTC 4h\n" +
+        "  /dom 4h\n" +
+        "  /news BTC 5\n" +
         "  /latest BTC/USD\n\n" +
         "D1\\+ analysis results are still pushed automatically after each bar\\.";
+
+    private async Task HandleChartCommandAsync(string text, string chatId, CancellationToken ct)
+    {
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        var symbol = parts.Length > 1 ? parts[1].Trim() : "BTC";
+        var timeframe = parts.Length > 2 ? parts[2].Trim().ToLowerInvariant() : "4h";
+        var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
+        var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
+
+        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "15m", "1h", "4h", "1d", "1w", "1m"
+        };
+        if (!allowedTimeframes.Contains(timeframe))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported timeframes: 15m, 1h, 4h, 1d, 1w, 1m."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
+        if (!allowedExchanges.Contains(exchange))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported exchanges: binance, okx."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+        if (!allowedMarketTypes.Contains(marketType))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported market types: spot, future."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var normalizedSymbol = symbol.Contains('/', StringComparison.Ordinal) ? symbol : $"{symbol.ToUpperInvariant()}/USD";
+
+        await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape($"Fetching chart for {normalizedSymbol} ({timeframe}, {exchange}, {marketType})... please wait."), ct).ConfigureAwait(false);
+
+        try
+        {
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, null, true, ct).ConfigureAwait(false);
+
+            var r = notification.Result;
+            var captionBuilder = new StringBuilder();
+            captionBuilder.Append("*NetGding Chart* \\| *").Append(AnalysisMessageFormatter.Escape(r.Symbol)).Append("* \\| *").Append(AnalysisMessageFormatter.Escape(r.Timeframe.ToUpperInvariant())).Append("*\n\n");
+            captionBuilder.Append("*Price:* ").Append(AnalysisMessageFormatter.Escape(r.CurrentPrice.ToString("F2"))).Append("\n");
+            
+            if (r.Reason != "Chart Only")
+            {
+                captionBuilder.Append("*Decision:* ").Append(AnalysisMessageFormatter.Escape(r.Decision.ToString().ToUpperInvariant())).Append(" \\(").Append($"{(r.Confidence * 100):F0}").Append("%\\)\n");
+                captionBuilder.Append("*Hold Time:* ").Append(AnalysisMessageFormatter.Escape(string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime)).Append("\n");
+            }
+            
+            captionBuilder.Append("*Datetime:* ").Append(AnalysisMessageFormatter.Escape(r.AnalyzedAtUtc.ToString("yyyy-MM-dd HH:mm:ss"))).Append(" UTC");
+            var caption = captionBuilder.ToString();
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                await _notifier.SendPhotoAsync(chatId, chartBytes, "chart.png", caption, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await _notifier.SendTextAsync(chatId, caption, ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BotPollingService: chart fetch failed for {Symbol} ({Timeframe})", normalizedSymbol, timeframe);
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to generate chart. Please try again in a moment."), ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleNewsCommandAsync(string text, string chatId, CancellationToken ct)
+    {
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        var symbol = parts.Length > 1 ? parts[1].Trim() : "BTC";
+        var limitStr = parts.Length > 2 ? parts[2].Trim() : "5";
+        if (!int.TryParse(limitStr, out var limit)) limit = 5;
+        limit = Math.Clamp(limit, 1, 10);
+
+        var normalizedSymbol = symbol.Contains('/', StringComparison.Ordinal) ? symbol : $"{symbol.ToUpperInvariant()}/USD";
+
+        await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape($"Fetching recent news for {normalizedSymbol}... please wait."), ct).ConfigureAwait(false);
+
+        try
+        {
+            var articles = await FetchNewsAsync(normalizedSymbol, limit, ct).ConfigureAwait(false);
+
+            var sb = new StringBuilder();
+            sb.Append("*NetGding News* \\| *").Append(AnalysisMessageFormatter.Escape(normalizedSymbol.ToUpperInvariant())).Append("*\n\n");
+
+            if (articles.Count == 0)
+            {
+                sb.Append("No recent news articles found for this symbol\\.");
+            }
+            else
+            {
+                foreach (var art in articles)
+                {
+                    var sentimentEmoji = art.Sentiment?.ToLowerInvariant() switch
+                    {
+                        "bullish" or "positive" => "🟢",
+                        "bearish" or "negative" => "🔴",
+                        _ => "⚪"
+                    };
+
+                    var escapedTitle = AnalysisMessageFormatter.Escape(art.Title);
+                    var escapedSource = AnalysisMessageFormatter.Escape(art.Source);
+                    var escapedSentiment = AnalysisMessageFormatter.Escape(art.Sentiment ?? "Neutral");
+                    var escapedSummary = AnalysisMessageFormatter.Escape(art.Summary.Length > 200 ? art.Summary[..197] + "..." : art.Summary);
+                    var escapedUrl = art.Url.Replace("\\", "\\\\").Replace(")", "\\)");
+
+                    sb.Append("📰 *[").Append(escapedTitle).Append("](").Append(escapedUrl).Append(")*\n");
+                    sb.Append("Source: ").Append(escapedSource).Append(" \\| ").Append(sentimentEmoji).Append(" ").Append(escapedSentiment).Append("\n");
+                    sb.Append(escapedSummary).Append("\n\n");
+                }
+            }
+
+            await _notifier.SendTextAsync(chatId, sb.ToString(), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BotPollingService: news fetch failed for {Symbol}", normalizedSymbol);
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to fetch news. Please try again in a moment."), ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleDomCommandAsync(string text, string chatId, CancellationToken ct)
+    {
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        int argIndex = 1;
+        if (parts.Length > argIndex && (parts[argIndex].Equals("btc", StringComparison.OrdinalIgnoreCase) || 
+                                        parts[argIndex].Equals("btc/usd", StringComparison.OrdinalIgnoreCase) || 
+                                        parts[argIndex].Equals("btcusd", StringComparison.OrdinalIgnoreCase)))
+        {
+            argIndex++;
+        }
+
+        var timeframe = parts.Length > argIndex ? parts[argIndex].Trim().ToLowerInvariant() : "4h";
+        var exchange = "binance";
+        var marketType = "spot";
+
+        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "15m", "1h", "4h", "1d", "1w", "1m"
+        };
+        if (!allowedTimeframes.Contains(timeframe))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported timeframes: 15m, 1h, 4h, 1d, 1w, 1m."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
+        if (!allowedExchanges.Contains(exchange))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported exchanges: binance, okx."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+        if (!allowedMarketTypes.Contains(marketType))
+        {
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported market types: spot, future."), ct).ConfigureAwait(false);
+            return;
+        }
+
+        var normalizedSymbol = "BTC/USD";
+
+        await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape($"Fetching DOM and chart for {normalizedSymbol}... please wait."), ct).ConfigureAwait(false);
+
+        try
+        {
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, "CRYPTOCAP:BTC.D", true, ct).ConfigureAwait(false);
+
+            var r = notification.Result;
+            var sb = new StringBuilder();
+            sb.Append("*NetGding DOM Chart* \\| *").Append(AnalysisMessageFormatter.Escape(r.Symbol)).Append("* \\| *").Append(AnalysisMessageFormatter.Escape(r.Timeframe.ToUpperInvariant())).Append("*\n\n");
+            sb.Append("*Datetime:* ").Append(AnalysisMessageFormatter.Escape(r.AnalyzedAtUtc.ToString("yyyy-MM-dd HH:mm:ss"))).Append(" UTC");
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                await _notifier.SendPhotoAsync(chatId, chartBytes, "chart.png", sb.ToString(), ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await _notifier.SendTextAsync(chatId, sb.ToString(), ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BotPollingService: DOM/chart request failed for {Symbol}", normalizedSymbol);
+            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to fetch DOM or chart. Please try again in a moment."), ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<IReadOnlyList<TelegramNewsItem>> FetchNewsAsync(string symbol, int limit, CancellationToken ct)
+    {
+        var o = _options.CurrentValue;
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit={limit}";
+
+        var client = _httpFactory.CreateClient(WebApiHttpClient);
+        var response = await client.GetAsync(url, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<TelegramNewsResponse>(s_jsonOptions, ct).ConfigureAwait(false);
+        return payload?.Items ?? Array.Empty<TelegramNewsItem>();
+    }
+
+    private async Task<MarketDepthDto?> FetchDomAsync(string symbol, string exchange, string marketType, int limit, CancellationToken ct)
+    {
+        var o = _options.CurrentValue;
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/market/dom?symbol={Uri.EscapeDataString(symbol)}&exchange={Uri.EscapeDataString(exchange)}&marketType={Uri.EscapeDataString(marketType)}&limit={limit}";
+
+        var client = _httpFactory.CreateClient(WebApiHttpClient);
+        var response = await client.GetAsync(url, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions, ct).ConfigureAwait(false);
+    }
 
     private sealed record TelegramUpdatesResponse(
         [property: JsonPropertyName("ok")] bool Ok,
@@ -363,4 +616,19 @@ public sealed class BotPollingService : BackgroundService
 
     private sealed record TelegramChat(
         [property: JsonPropertyName("id")] long Id);
+
+    private sealed record TelegramNewsResponse(
+        string Symbol,
+        int Count,
+        IReadOnlyList<TelegramNewsItem> Items);
+
+    private sealed record TelegramNewsItem(
+        long Id,
+        string Symbol,
+        string Title,
+        string Source,
+        string Url,
+        DateTime PublishedAtUtc,
+        string Summary,
+        string? Sentiment);
 }

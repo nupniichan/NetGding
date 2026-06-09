@@ -13,4 +13,9 @@ public interface IExchangeMarketDataCollector
         DateTime toUtc,
         string timeframe,
         CancellationToken ct = default);
+
+    Task<MarketDepthDto?> GetDepthAsync(
+        string symbol,
+        int limit = 10,
+        CancellationToken ct = default);
 }

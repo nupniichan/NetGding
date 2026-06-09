@@ -1,9 +1,23 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using DSharpPlus.Entities;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Discord.Formatting;
+
+public sealed record DiscordNewsItem(
+    long Id,
+    string Symbol,
+    string Title,
+    string Source,
+    string Url,
+    DateTime PublishedAtUtc,
+    string Summary,
+    string? Sentiment = null);
 
 public sealed class AnalysisEmbedFormatter
 {
@@ -195,4 +209,77 @@ public sealed class AnalysisEmbedFormatter
         <= 75 => "🟢",
         _ => "🚀"
     };
+
+    public DiscordEmbed BuildChartEmbed(AnalysisResult r)
+    {
+        var color = r.Decision switch
+        {
+            TradeDecision.Buy => new DiscordColor(0x00B894),
+            TradeDecision.Sell => new DiscordColor(0xD63031),
+            TradeDecision.Wait => new DiscordColor(0x95A5A6),
+            _ => new DiscordColor(0x95A5A6)
+        };
+
+        var builder = new DiscordEmbedBuilder()
+            .WithTitle($"NetGding Chart | {r.Symbol} | {NormalizeTimeframe(r.Timeframe)}")
+            .WithColor(color)
+            .WithTimestamp(r.AnalyzedAtUtc)
+            .AddField("Price", r.CurrentPrice.ToString("F2"), inline: true);
+
+        if (r.Reason != "Chart Only")
+        {
+            builder.AddField("Decision", NormalizeDecision(r.Decision), inline: true)
+                   .AddField("AI Confidence", $"{(r.Confidence * 100):F0}%", inline: true)
+                   .AddField("Hold Time", string.IsNullOrWhiteSpace(r.ExpectedHoldTime) ? "N/A" : r.ExpectedHoldTime, inline: true);
+        }
+
+        return builder.Build();
+    }
+
+    public DiscordEmbed BuildDomChartEmbed(AnalysisResult r)
+    {
+        var color = new DiscordColor(0x95A5A6);
+        return new DiscordEmbedBuilder()
+            .WithTitle($"NetGding DOM Chart | {r.Symbol} | {NormalizeTimeframe(r.Timeframe)}")
+            .WithColor(color)
+            .WithTimestamp(r.AnalyzedAtUtc)
+            .Build();
+    }
+
+    public DiscordEmbed BuildNewsEmbed(string symbol, IReadOnlyList<DiscordNewsItem> articles)
+    {
+        var builder = new DiscordEmbedBuilder()
+            .WithTitle($"NetGding News | {symbol.ToUpperInvariant()}")
+            .WithColor(new DiscordColor(0x3498DB))
+            .WithTimestamp(DateTime.UtcNow);
+
+        if (articles.Count == 0)
+        {
+            builder.WithDescription("No recent news articles found for this symbol.");
+            return builder.Build();
+        }
+
+        foreach (var art in articles)
+        {
+            var sentimentEmoji = art.Sentiment?.ToLowerInvariant() switch
+            {
+                "bullish" or "positive" => "🟢",
+                "bearish" or "negative" => "🔴",
+                _ => "⚪"
+            };
+
+            var description = $"**Source:** {art.Source} | {sentimentEmoji} {art.Sentiment ?? "Neutral"}\n" +
+                              $"**Published:** {art.PublishedAtUtc:yyyy-MM-dd HH:mm:ss} UTC\n" +
+                              $"[Read Article]({art.Url})\n" +
+                              $"{art.Summary}";
+
+            if (description.Length > 1024)
+                description = description[..1021] + "...";
+
+            var title = art.Title.Length > 256 ? art.Title[..253] + "..." : art.Title;
+            builder.AddField(title, description);
+        }
+
+        return builder.Build();
+    }
 }

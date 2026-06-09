@@ -9,7 +9,7 @@ public static class IndicatorEndpoints
 {
     public static void MapIndicatorEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/indicators/{symbol}", HandleGetIndicatorsAsync)
+        app.MapGet("/api/indicators/{*symbol}", HandleGetIndicatorsAsync)
            .WithName("GetIndicatorsBySymbol")
            .WithTags("Indicators");
     }
@@ -32,8 +32,9 @@ public static class IndicatorEndpoints
             return Results.BadRequest("Symbol, timeframe, exchange, and marketType are required.");
         }
 
+        var decodedSymbol = Uri.UnescapeDataString(symbol).Trim();
         var normalizedRequest = new OnDemandRequest(
-            symbol.Trim(),
+            decodedSymbol,
             timeframe.Trim().ToLowerInvariant(),
             exchange.Trim().ToLowerInvariant(),
             marketType.Trim().ToLowerInvariant());

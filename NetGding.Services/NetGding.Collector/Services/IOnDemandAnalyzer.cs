@@ -9,5 +9,7 @@ public interface IOnDemandAnalyzer
         string timeframe,
         string exchange,
         string marketType,
+        string? chartSymbol = null,
+        bool chartOnly = false,
         CancellationToken ct = default);
 }

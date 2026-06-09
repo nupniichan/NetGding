@@ -48,7 +48,18 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
                 .ConfigureAwait(false);
 
             if (response?.Feed is null || response.Feed.Count == 0)
+            {
+                if (response is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(response.Note))
+                        _logger.LogWarning("AlphaVantageNewsProvider: Note received: {Note}", response.Note);
+                    if (!string.IsNullOrWhiteSpace(response.Information))
+                        _logger.LogWarning("AlphaVantageNewsProvider: Information received: {Info}", response.Information);
+                    if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
+                        _logger.LogError("AlphaVantageNewsProvider: Error received: {Error}", response.ErrorMessage);
+                }
                 return [];
+            }
 
             var results = new List<NewsItemDto>();
             foreach (var item in response.Feed)
@@ -125,6 +136,15 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
     {
         [JsonPropertyName("feed")]
         public List<AlphaVantageFeedItem>? Feed { get; set; }
+
+        [JsonPropertyName("Note")]
+        public string? Note { get; set; }
+
+        [JsonPropertyName("Information")]
+        public string? Information { get; set; }
+
+        [JsonPropertyName("Error Message")]
+        public string? ErrorMessage { get; set; }
     }
 
     private sealed class AlphaVantageFeedItem

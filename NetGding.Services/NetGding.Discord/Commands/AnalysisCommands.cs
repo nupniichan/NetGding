@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
 using NetGding.Contracts.Models.Analysis;
+using NetGding.Contracts.Models.MarketData;
 using NetGding.Discord.Formatting;
 
 namespace NetGding.Discord.Commands;
@@ -59,6 +60,9 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
                 "• `/analyze <symbol> <timeframe> [exchange] [market_type]` — run live analysis (defaults: binance, spot)\n" +
+                "• `/chart [symbol] [timeframe] [exchange] [market_type]` — get live chart (defaults: BTC, 4h, binance, spot)\n" +
+                "• `/news [symbol] [limit]` — get recent news (defaults: BTC, 5)\n" +
+                "• `/dom [timeframe]` — check BTC dominance chart and DOM (default: 4h)\n" +
                 "• `/fagi` — get the current Crypto Fear and Greed Index\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
                 "**Supported exchanges:** `binance`, `okx`\n" +
@@ -72,6 +76,9 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Examples:**\n" +
                 "  `/analyze BTC 4h`\n" +
                 "  `/analyze BTC 4h okx future`\n" +
+                "  `/chart BTC 4h`\n" +
+                "  `/dom 4h`\n" +
+                "  `/news BTC 5`\n" +
                 "  `/latest BTC`\n\n" +
                 "D1+ analysis results are pushed automatically after each bar.")
             .Build();
@@ -194,11 +201,13 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         string symbol,
         string timeframe,
         string exchange,
-        string marketType)
+        string marketType,
+        string? chartSymbol = null,
+        bool chartOnly = false)
     {
         var o = _options.CurrentValue;
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var payload = new { symbol, timeframe, exchange, marketType };
+        var payload = new { symbol, timeframe, exchange, marketType, chartSymbol, chartOnly };
 
         var response = await HttpRetryHelper.ExecuteAsync(
             () => _httpFactory.CreateClient("WebApiClient").PostAsJsonAsync(url, payload),
@@ -235,7 +244,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 .AddField("Value", fng.Value.ToString(), inline: true)
                 .AddField("Classification", $"{emoji} {fng.Classification}", inline: true)
                 .WithTimestamp(fng.TimestampUtc)
-                .WithFooter("Data provided by CoinMarketCap or Alternative.me")
+                .WithFooter("Data provided by CoinMarketCap")
                 .Build();
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
@@ -267,9 +276,227 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         _ => new DiscordColor(0x00B894)
     };
 
+    [SlashCommand("chart", "Get live chart for a symbol")]
+    public async Task ChartAsync(
+        InteractionContext ctx,
+        [Option("symbol", "Symbol e.g. BTC (default: BTC)")] string symbol = "BTC",
+        [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m (default: 4h)")] string timeframe = "4h",
+        [Option("exchange", "Exchange: binance, okx (default: binance)")] string exchange = "binance",
+        [Option("market_type", "Market type: spot, future (default: spot)")] string marketType = "spot")
+    {
+        var normalizedSymbol = NormalizeSymbol(symbol);
+        timeframe = timeframe.Trim().ToLowerInvariant();
+        exchange = exchange.Trim().ToLowerInvariant();
+        marketType = marketType.Trim().ToLowerInvariant();
+
+        if (!s_allowedTimeframes.Contains(timeframe))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported timeframes: `15m`, `1h`, `4h`, `1d`, `1w`, `1m`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!s_allowedExchanges.Contains(exchange))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported exchanges: `binance`, `okx`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!s_allowedMarketTypes.Contains(marketType))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported market types: `spot`, `future`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, chartOnly: true)
+                .ConfigureAwait(false);
+
+            var embed = _formatter.BuildChartEmbed(notification.Result);
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                using var ms = new MemoryStream(chartBytes);
+
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder()
+                        .AddEmbed(embed)
+                        .AddFile("chart.png", ms)).ConfigureAwait(false);
+            }
+            else
+            {
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "AnalysisCommands: on-demand chart failed for {Symbol} ({Timeframe})",
+                normalizedSymbol, timeframe);
+
+            await ctx.EditResponseAsync(
+                new DiscordWebhookBuilder()
+                    .WithContent("Collector service is unavailable. Please try again in a moment."))
+                .ConfigureAwait(false);
+        }
+    }
+
+    [SlashCommand("news", "Get news articles for a symbol")]
+    public async Task NewsAsync(
+        InteractionContext ctx,
+        [Option("symbol", "Symbol e.g. BTC (default: BTC)")] string symbol = "BTC",
+        [Option("limit", "Number of articles (default: 5)")] long limit = 5)
+    {
+        var normalizedSymbol = NormalizeSymbol(symbol);
+        var normLimit = (int)Math.Clamp(limit, 1, 10);
+
+        await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var articles = await FetchNewsAsync(normalizedSymbol, normLimit).ConfigureAwait(false);
+            var embed = _formatter.BuildNewsEmbed(normalizedSymbol, articles);
+
+            await ctx.EditResponseAsync(
+                new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AnalysisCommands: news fetch failed for {Symbol}", normalizedSymbol);
+
+            await ctx.EditResponseAsync(
+                new DiscordWebhookBuilder()
+                    .WithContent("WebAPI news service is unavailable. Please try again in a moment."))
+                .ConfigureAwait(false);
+        }
+    }
+
+    [SlashCommand("dom", "Check DOM and chart for Bitcoin")]
+    public async Task DomAsync(
+        InteractionContext ctx,
+        [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m (default: 4h)")] string timeframe = "4h")
+    {
+        var normalizedSymbol = "BTC/USD";
+        var exchange = "binance";
+        var marketType = "spot";
+        timeframe = timeframe.Trim().ToLowerInvariant();
+
+        if (!s_allowedTimeframes.Contains(timeframe))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported timeframes: `15m`, `1h`, `4h`, `1d`, `1w`, `1m`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!s_allowedExchanges.Contains(exchange))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported exchanges: `binance`, `okx`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!s_allowedMarketTypes.Contains(marketType))
+        {
+            await ctx.CreateResponseAsync(
+                InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder()
+                    .WithContent("Supported market types: `spot`, `future`.")
+                    .AsEphemeral(true)).ConfigureAwait(false);
+            return;
+        }
+
+        await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, "CRYPTOCAP:BTC.D", chartOnly: true).ConfigureAwait(false);
+
+            var embed = _formatter.BuildDomChartEmbed(notification.Result);
+
+            if (!string.IsNullOrWhiteSpace(notification.ChartImageBase64))
+            {
+                var chartBytes = Convert.FromBase64String(notification.ChartImageBase64);
+                using var ms = new MemoryStream(chartBytes);
+
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder()
+                        .AddEmbed(embed)
+                        .AddFile("chart.png", ms)).ConfigureAwait(false);
+            }
+            else
+            {
+                await ctx.EditResponseAsync(
+                    new DiscordWebhookBuilder().AddEmbed(embed)).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AnalysisCommands: DOM or chart request failed for {Symbol}", normalizedSymbol);
+
+            await ctx.EditResponseAsync(
+                new DiscordWebhookBuilder()
+                    .WithContent("Service is unavailable. Please try again in a moment."))
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<IReadOnlyList<DiscordNewsItem>> FetchNewsAsync(string symbol, int limit)
+    {
+        var o = _options.CurrentValue;
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit={limit}";
+
+        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<DiscordNewsResponse>(s_jsonOptions).ConfigureAwait(false);
+        return payload?.Items ?? Array.Empty<DiscordNewsItem>();
+    }
+
+    private async Task<MarketDepthDto?> FetchDomAsync(string symbol, string exchange, string marketType, int limit)
+    {
+        var o = _options.CurrentValue;
+        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/market/dom?symbol={Uri.EscapeDataString(symbol)}&exchange={Uri.EscapeDataString(exchange)}&marketType={Uri.EscapeDataString(marketType)}&limit={limit}";
+
+        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions).ConfigureAwait(false);
+    }
+
     private static string NormalizeSymbol(string symbol)
     {
         var normalized = symbol.Trim().ToUpperInvariant();
         return normalized.Contains('/', StringComparison.Ordinal) ? normalized : $"{normalized}/USD";
     }
+
+    private sealed record DiscordNewsResponse(
+        string Symbol,
+        int Count,
+        IReadOnlyList<DiscordNewsItem> Items);
 }

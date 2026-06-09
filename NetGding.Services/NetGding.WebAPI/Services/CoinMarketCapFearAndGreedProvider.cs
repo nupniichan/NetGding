@@ -58,32 +58,12 @@ public sealed class CoinMarketCapFearAndGreedProvider : IFearAndGreedProvider
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "CoinMarketCapFearAndGreedProvider: Failed to fetch from CoinMarketCap, attempting fallback to Alternative.me");
+                _logger.LogError(ex, "CoinMarketCapFearAndGreedProvider: Failed to fetch from CoinMarketCap");
             }
         }
         else
         {
-            _logger.LogInformation("CoinMarketCapFearAndGreedProvider: CoinMarketCapApiKey is empty, using Alternative.me fallback");
-        }
-
-        try
-        {
-            _logger.LogInformation("CoinMarketCapFearAndGreedProvider: Fetching sentiment from Alternative.me");
-            var response = await _httpClient.GetFromJsonAsync<AlternativeMeResponse>("https://api.alternative.me/fng/?limit=1", ct).ConfigureAwait(false);
-            if (response?.Data is not null && response.Data.Count > 0)
-            {
-                var item = response.Data[0];
-                var val = ParseValue(item.Value);
-                var classification = item.ValueClassification ?? "Neutral";
-                var timestamp = ParseTimestamp(item.Timestamp);
-
-                _logger.LogInformation("CoinMarketCapFearAndGreedProvider: Alternative.me returned value={Value} ({Classification})", val, classification);
-                return new FearAndGreedDto(val, classification, timestamp);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "CoinMarketCapFearAndGreedProvider: Alternative.me fallback failed");
+            _logger.LogWarning("CoinMarketCapFearAndGreedProvider: CoinMarketCapApiKey is empty.");
         }
 
         return null;
@@ -120,24 +100,6 @@ public sealed class CoinMarketCapFearAndGreedProvider : IFearAndGreedProvider
     }
 
     private sealed class CmcData
-    {
-        [JsonPropertyName("value")]
-        public JsonElement Value { get; set; }
-
-        [JsonPropertyName("value_classification")]
-        public string? ValueClassification { get; set; }
-
-        [JsonPropertyName("timestamp")]
-        public JsonElement Timestamp { get; set; }
-    }
-
-    private sealed class AlternativeMeResponse
-    {
-        [JsonPropertyName("data")]
-        public List<AlternativeMeData>? Data { get; set; }
-    }
-
-    private sealed class AlternativeMeData
     {
         [JsonPropertyName("value")]
         public JsonElement Value { get; set; }

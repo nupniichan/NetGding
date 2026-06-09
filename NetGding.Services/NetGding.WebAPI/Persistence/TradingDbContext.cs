@@ -30,6 +30,7 @@ public sealed class TradingDbContext : DbContext
 
             entity.Property(e => e.Symbol).HasMaxLength(50);
             entity.Property(e => e.Timeframe).HasMaxLength(20);
+            entity.Ignore(e => e.ChartSymbol);
 
             // Serialize complex structures to JSON strings for maximum DB portability (SQLite, PG, SQL Server)
             entity.Property(e => e.Indicators)

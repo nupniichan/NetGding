@@ -9,7 +9,7 @@ public static class NewsEndpoints
 {
     public static void MapNewsEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/news/{symbol}", HandleGetNewsAsync)
+        app.MapGet("/api/news/{*symbol}", HandleGetNewsAsync)
            .WithName("GetNewsBySymbol")
            .WithTags("News");
     }
@@ -28,7 +28,7 @@ public static class NewsEndpoints
 
         var o = webApiOptions.Value;
         var normalizedLimit = limit <= 0 ? o.NewsDefaultLimit : Math.Min(limit, o.NewsMaxLimit);
-        var normalizedSymbol = symbol.Trim();
+        var normalizedSymbol = Uri.UnescapeDataString(symbol).Trim();
 
         var items = await newsProvider
             .GetNewsAsync(normalizedSymbol, normalizedLimit, from, to, ct)

@@ -6,6 +6,7 @@ namespace NetGding.Contracts.Models.Analysis;
 public sealed class AnalysisResult
 {
     public required string Symbol { get; set; }
+    public string? ChartSymbol { get; set; }
     public AssetMarket Market { get; set; }
     public MarketType MarketType { get; set; }
     public required string Timeframe { get; set; }

@@ -43,6 +43,13 @@ public sealed class TelegramNotifier : ITelegramNotifier
 
     private async Task SendPhotoAsync(string chatId, AnalysisNotification notification, CancellationToken ct)
     {
+        var caption = _formatter.Build(notification.Result);
+        var chartBytes = Convert.FromBase64String(notification.ChartImageBase64!);
+        await SendPhotoAsync(chatId, chartBytes, "chart.png", caption, ct).ConfigureAwait(false);
+    }
+
+    public async Task SendPhotoAsync(string chatId, byte[] photoBytes, string fileName, string caption, CancellationToken ct = default)
+    {
         var o = _options.CurrentValue;
 
         if (string.IsNullOrWhiteSpace(o.BotToken))
@@ -57,13 +64,10 @@ public sealed class TelegramNotifier : ITelegramNotifier
             return;
         }
 
-        var caption = _formatter.Build(notification.Result);
         if (caption.Length > MaxCaptionLength)
             caption = caption[..(MaxCaptionLength - 3)] + "\\.\\.\\.";
 
         var url = $"{o.ApiBaseUrl.TrimEnd('/')}/bot{o.BotToken}/sendPhoto";
-        var chartBytes = Convert.FromBase64String(notification.ChartImageBase64!);
-
         var http = _httpFactory.CreateClient(nameof(TelegramNotifier));
 
         try
@@ -72,7 +76,7 @@ public sealed class TelegramNotifier : ITelegramNotifier
             form.Add(new StringContent(chatId), "chat_id");
             form.Add(new StringContent(caption), "caption");
             form.Add(new StringContent(ParseMode), "parse_mode");
-            form.Add(new ByteArrayContent(chartBytes), "photo", "chart.png");
+            form.Add(new ByteArrayContent(photoBytes), "photo", fileName);
 
             var response = await http.PostAsync(url, form, ct).ConfigureAwait(false);
 
@@ -83,8 +87,7 @@ public sealed class TelegramNotifier : ITelegramNotifier
                     "TelegramNotifier: sendPhoto failed ({StatusCode}): {Body}",
                     (int)response.StatusCode, body);
 
-                var text = _formatter.Build(notification.Result);
-                await SendTextAsync(chatId, text, ct).ConfigureAwait(false);
+                await SendTextAsync(chatId, caption, ct).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
