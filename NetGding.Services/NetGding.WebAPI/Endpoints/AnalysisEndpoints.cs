@@ -52,23 +52,46 @@ public static class AnalysisEndpoints
             request.MarketType.Trim().ToLowerInvariant(),
             request.ChartSymbol?.Trim(),
             request.ChartOnly);
-        var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
-        if (notification is null)
+        try
         {
-            logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
-                normalizedRequest.Symbol,
-                normalizedRequest.Timeframe,
-                normalizedRequest.Exchange,
-                normalizedRequest.MarketType);
-            return Results.StatusCode(502);
-        }
+            var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
+            if (notification is null)
+            {
+                logger.LogError("On-demand proxy failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
+                    normalizedRequest.Symbol,
+                    normalizedRequest.Timeframe,
+                    normalizedRequest.Exchange,
+                    normalizedRequest.MarketType);
+                var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                    "ERR_PROXY_FAILED",
+                    "WebAPI.HandleOnDemandAsync",
+                    "Collector service returned empty response.");
+                return Results.Json(errorResponse, statusCode: 502);
+            }
 
-        if (!normalizedRequest.ChartOnly && string.IsNullOrWhiteSpace(normalizedRequest.ChartSymbol))
+            if (!normalizedRequest.ChartOnly && string.IsNullOrWhiteSpace(normalizedRequest.ChartSymbol))
+            {
+                analysisResultStore.Store(notification.Result);
+            }
+
+            return Results.Ok(notification);
+        }
+        catch (NetGding.Contracts.Exceptions.NetGdingException ex)
         {
-            analysisResultStore.Store(notification.Result);
+            logger.LogError(ex, "On-demand analysis NetGdingException in WebAPI for {Symbol} [{ErrorCode} at {Location}]: {Message}",
+                normalizedRequest.Symbol, ex.ErrorCode, ex.Location, ex.Message);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(ex.ErrorCode, ex.Location, ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
         }
-
-        return Results.Ok(notification);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "On-demand analysis unexpected exception in WebAPI for {Symbol}", normalizedRequest.Symbol);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                "ERR_INTERNAL",
+                "WebAPI.HandleOnDemandAsync",
+                ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
+        }
     }
 
     private static async Task<IResult> HandlePublishAsync(
@@ -184,14 +207,31 @@ public static class AnalysisEndpoints
                 ct).ConfigureAwait(false);
 
             if (depth is null)
-                return Results.NotFound("Failed to retrieve order book depth.");
+            {
+                var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                    "ERR_DOM_EMPTY",
+                    "WebAPI.HandleGetDomAsync",
+                    "Order book depth not found.");
+                return Results.Json(errorResponse, statusCode: 404);
+            }
 
             return Results.Ok(depth);
+        }
+        catch (NetGding.Contracts.Exceptions.NetGdingException ex)
+        {
+            logger.LogError(ex, "Get DOM NetGdingException in WebAPI for {Symbol} [{ErrorCode} at {Location}]: {Message}",
+                symbol, ex.ErrorCode, ex.Location, ex.Message);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(ex.ErrorCode, ex.Location, ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to proxy DOM for {Symbol} on {Exchange} ({MarketType})", symbol, exchange, marketType);
-            return Results.StatusCode(502);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                "ERR_INTERNAL",
+                "WebAPI.HandleGetDomAsync",
+                ex.Message);
+            return Results.Json(errorResponse, statusCode: 502);
         }
     }
 }

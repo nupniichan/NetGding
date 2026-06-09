@@ -9,16 +9,6 @@ using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Discord.Formatting;
 
-public sealed record DiscordNewsItem(
-    long Id,
-    string Symbol,
-    string Title,
-    string Source,
-    string Url,
-    DateTime PublishedAtUtc,
-    string Summary,
-    string? Sentiment = null);
-
 public sealed class AnalysisEmbedFormatter
 {
     private const int FieldValueMaxLength = 1024;

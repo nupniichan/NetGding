@@ -49,15 +49,38 @@ public sealed class CollectorGateway : ICollectorGateway
                     attempt, max, status, request.Symbol, request.Timeframe, request.Exchange, request.MarketType),
                 ct: ct).ConfigureAwait(false);
 
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<AnalysisNotification>(cancellationToken: ct)
+            if (!response.IsSuccessStatusCode)
+            {
+                ErrorResponse? errResp = null;
+                try
+                {
+                    errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(cancellationToken: ct).ConfigureAwait(false);
+                }
+                catch { }
+
+                if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+                {
+                    throw new NetGding.Contracts.Exceptions.NetGdingException(
+                        errResp.ErrorCode,
+                        errResp.Location,
+                        errResp.Message);
+                }
+
+                throw new HttpRequestException($"Collector service returned status code {(int)response.StatusCode}.");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AnalysisNotification>(cancellationToken: ct)
                 .ConfigureAwait(false);
+            return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
             _logger.LogError(ex, "CollectorGateway failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
                 request.Symbol, request.Timeframe, request.Exchange, request.MarketType);
-            return null;
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_COLLECTOR_GATEWAY_FAILED",
+                "CollectorGateway.AnalyzeOnDemandAsync",
+                $"Collector Gateway call failed: {ex.Message}", ex);
         }
     }
 
@@ -87,14 +110,37 @@ public sealed class CollectorGateway : ICollectorGateway
                     attempt, max, status, symbol),
                 ct: ct).ConfigureAwait(false);
 
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<MarketDepthDto>(cancellationToken: ct)
+            if (!response.IsSuccessStatusCode)
+            {
+                ErrorResponse? errResp = null;
+                try
+                {
+                    errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(cancellationToken: ct).ConfigureAwait(false);
+                }
+                catch { }
+
+                if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+                {
+                    throw new NetGding.Contracts.Exceptions.NetGdingException(
+                        errResp.ErrorCode,
+                        errResp.Location,
+                        errResp.Message);
+                }
+
+                throw new HttpRequestException($"Collector service returned status code {(int)response.StatusCode}.");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<MarketDepthDto>(cancellationToken: ct)
                 .ConfigureAwait(false);
+            return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
             _logger.LogError(ex, "CollectorGateway GetDepthAsync failed for {Symbol}", symbol);
-            return null;
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_COLLECTOR_GATEWAY_DEPTH_FAILED",
+                "CollectorGateway.GetDepthAsync",
+                $"Collector Gateway GetDepthAsync call failed: {ex.Message}", ex);
         }
     }
 }

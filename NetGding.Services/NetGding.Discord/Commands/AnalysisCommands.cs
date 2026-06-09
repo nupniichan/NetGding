@@ -190,9 +190,19 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "AnalysisCommands: on-demand analysis failed for {Symbol} ({Timeframe})",
                 normalizedSymbol, timeframe);
 
+            var errorMsg = "Collector service is unavailable. Please try again in a moment.";
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                errorMsg = $"❌ **Analysis Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                errorMsg = $"❌ **Analysis Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
+            }
+
             await ctx.EditResponseAsync(
                 new DiscordWebhookBuilder()
-                    .WithContent("Collector service is unavailable. Please try again in a moment."))
+                    .WithContent(errorMsg))
                 .ConfigureAwait(false);
         }
     }
@@ -217,7 +227,25 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "AnalysisCommands: on-demand attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
                 attempt, max, status, symbol, timeframe)).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
+
+            response.EnsureSuccessStatusCode();
+        }
 
         var notification = await response.Content
             .ReadFromJsonAsync<AnalysisNotification>(s_jsonOptions)
@@ -351,9 +379,19 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "AnalysisCommands: on-demand chart failed for {Symbol} ({Timeframe})",
                 normalizedSymbol, timeframe);
 
+            var errorMsg = "Collector service is unavailable. Please try again in a moment.";
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                errorMsg = $"❌ **Chart Generation Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                errorMsg = $"❌ **Chart Generation Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
+            }
+
             await ctx.EditResponseAsync(
                 new DiscordWebhookBuilder()
-                    .WithContent("Collector service is unavailable. Please try again in a moment."))
+                    .WithContent(errorMsg))
                 .ConfigureAwait(false);
         }
     }
@@ -382,9 +420,19 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         {
             _logger.LogError(ex, "AnalysisCommands: news fetch failed for {Symbol}", normalizedSymbol);
 
+            var errorMsg = "WebAPI news service is unavailable. Please try again in a moment.";
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                errorMsg = $"❌ **News Fetch Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                errorMsg = $"❌ **News Fetch Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
+            }
+
             await ctx.EditResponseAsync(
                 new DiscordWebhookBuilder()
-                    .WithContent("WebAPI news service is unavailable. Please try again in a moment."))
+                    .WithContent(errorMsg))
                 .ConfigureAwait(false);
         }
     }
@@ -458,9 +506,19 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         {
             _logger.LogError(ex, "AnalysisCommands: DOM or chart request failed for {Symbol}", normalizedSymbol);
 
+            var errorMsg = "Service is unavailable. Please try again in a moment.";
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                errorMsg = $"❌ **Request Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                errorMsg = $"❌ **Request Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
+            }
+
             await ctx.EditResponseAsync(
                 new DiscordWebhookBuilder()
-                    .WithContent("Service is unavailable. Please try again in a moment."))
+                    .WithContent(errorMsg))
                 .ConfigureAwait(false);
         }
     }
@@ -471,7 +529,24 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit={limit}";
 
         var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
+            response.EnsureSuccessStatusCode();
+        }
 
         var payload = await response.Content.ReadFromJsonAsync<DiscordNewsResponse>(s_jsonOptions).ConfigureAwait(false);
         return payload?.Items ?? Array.Empty<DiscordNewsItem>();
@@ -484,7 +559,23 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
             return null;
+        }
 
         return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions).ConfigureAwait(false);
     }

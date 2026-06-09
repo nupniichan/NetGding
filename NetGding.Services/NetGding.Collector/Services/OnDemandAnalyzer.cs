@@ -71,14 +71,23 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             symbol, timeframe, exchange, resolvedMarketType, fromUtc, toUtc);
 
         var collector = _collectorResolver.Resolve(exchange, resolvedMarketType);
+        if (collector is null)
+        {
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_COLLECTOR_NOT_FOUND",
+                "OnDemandAnalyzer.AnalyzeAsync",
+                $"No collector resolved for exchange '{exchange}' and market type '{resolvedMarketType}'.");
+        }
         var bars = await collector
             .CollectAsync(symbol, fromUtc, toUtc, timeframe, ct)
             .ConfigureAwait(false);
 
         if (bars.Count == 0)
         {
-            _logger.LogWarning(
-                "OnDemandAnalyzer: no OHLCV data for {Symbol} [{TimeFrame}]", symbol, timeframe);
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_NO_MARKET_DATA",
+                "OnDemandAnalyzer.AnalyzeAsync",
+                $"No market data (OHLCV) found for {symbol} on {exchange} [{timeframe}].");
         }
 
         var market = ResolveMarket(symbol);
@@ -155,10 +164,26 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             {
                 var chartBytes = await _chartRenderer.RenderAsync(bars, result, exchange, ct).ConfigureAwait(false);
                 if (chartBytes.Length > 0)
+                {
                     notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
+                }
+                else if (isChartRequest)
+                {
+                    throw new NetGding.Contracts.Exceptions.NetGdingException(
+                        "ERR_CHART_RENDER_FAILED",
+                        "OnDemandAnalyzer.AnalyzeAsync",
+                        "Chart rendering completed but returned empty bytes.");
+                }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
             {
+                if (isChartRequest)
+                {
+                    throw new NetGding.Contracts.Exceptions.NetGdingException(
+                        "ERR_CHART_RENDER_FAILED",
+                        "OnDemandAnalyzer.AnalyzeAsync",
+                        $"Chart rendering failed: {ex.Message}", ex);
+                }
                 _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", symbol);
             }
         }
@@ -335,8 +360,10 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OnDemandAnalyzer: failed to fetch Fear & Greed Index from WebAPI");
-            return null;
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_FEAR_AND_GREED_FETCH_FAILED",
+                "OnDemandAnalyzer.FetchFearAndGreedFromWebApiAsync",
+                $"Failed to fetch Fear & Greed Index from WebAPI: {ex.Message}", ex);
         }
     }
 
@@ -373,23 +400,10 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OnDemandAnalyzer: failed to fetch news from WebAPI for {Symbol}", symbol);
-            return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_NEWS_FETCH_FAILED",
+                "OnDemandAnalyzer.FetchNewsFromWebApiAsync",
+                $"Failed to fetch news from WebAPI for {symbol}: {ex.Message}", ex);
         }
     }
-
-    private sealed record WebApiNewsResponse(
-        string Symbol,
-        int Count,
-        IReadOnlyList<WebApiNewsItemDto> Items);
-
-    private sealed record WebApiNewsItemDto(
-        long Id,
-        string Symbol,
-        string Title,
-        string Source,
-        string Url,
-        DateTime PublishedAtUtc,
-        string Summary,
-        string? Sentiment);
 }

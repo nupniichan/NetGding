@@ -283,9 +283,32 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: on-demand analysis failed for {Symbol} ({Timeframe})", symbol, timeframe);
+            
+            var code = "ERR_UNKNOWN";
+            var location = "BotPollingService";
+            var message = ex.Message;
+
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                code = nex.ErrorCode;
+                location = nex.Location;
+                message = nex.Message;
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                code = inex.ErrorCode;
+                location = inex.Location;
+                message = inex.Message;
+            }
+
+            var escapedCode = AnalysisMessageFormatter.Escape(code);
+            var escapedLoc = AnalysisMessageFormatter.Escape(location);
+            var escapedMsg = AnalysisMessageFormatter.Escape(message);
+            var errorMsg = $"❌ *Analysis Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
             await _notifier.SendTextAsync(
                 chatId,
-                AnalysisMessageFormatter.Escape($"Collector service is unavailable. Please try again in a moment."),
+                errorMsg,
                 ct).ConfigureAwait(false);
         }
     }
@@ -312,7 +335,24 @@ public sealed class BotPollingService : BackgroundService
                 attempt, max, status, symbol, timeframe),
             ct: ct).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions, ct).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
+            response.EnsureSuccessStatusCode();
+        }
 
         var notification = await response.Content
             .ReadFromJsonAsync<AnalysisNotification>(s_jsonOptions, ct)
@@ -347,10 +387,30 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: failed to handle /fagi command");
-            await _notifier.SendTextAsync(
-                chatId,
-                AnalysisMessageFormatter.Escape("Failed to fetch Fear & Greed Index. Service might be unavailable."),
-                ct).ConfigureAwait(false);
+            
+            var code = "ERR_UNKNOWN";
+            var location = "BotPollingService";
+            var message = ex.Message;
+
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                code = nex.ErrorCode;
+                location = nex.Location;
+                message = nex.Message;
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                code = inex.ErrorCode;
+                location = inex.Location;
+                message = inex.Message;
+            }
+
+            var escapedCode = AnalysisMessageFormatter.Escape(code);
+            var escapedLoc = AnalysisMessageFormatter.Escape(location);
+            var escapedMsg = AnalysisMessageFormatter.Escape(message);
+            var errorMsg = $"❌ *FAGI Command Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
+            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
         }
     }
 
@@ -446,7 +506,30 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: chart fetch failed for {Symbol} ({Timeframe})", normalizedSymbol, timeframe);
-            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to generate chart. Please try again in a moment."), ct).ConfigureAwait(false);
+            
+            var code = "ERR_UNKNOWN";
+            var location = "BotPollingService";
+            var message = ex.Message;
+
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                code = nex.ErrorCode;
+                location = nex.Location;
+                message = nex.Message;
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                code = inex.ErrorCode;
+                location = inex.Location;
+                message = inex.Message;
+            }
+
+            var escapedCode = AnalysisMessageFormatter.Escape(code);
+            var escapedLoc = AnalysisMessageFormatter.Escape(location);
+            var escapedMsg = AnalysisMessageFormatter.Escape(message);
+            var errorMsg = $"❌ *Chart Generation Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
+            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
         }
     }
 
@@ -502,7 +585,30 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: news fetch failed for {Symbol}", normalizedSymbol);
-            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to fetch news. Please try again in a moment."), ct).ConfigureAwait(false);
+            
+            var code = "ERR_UNKNOWN";
+            var location = "BotPollingService";
+            var message = ex.Message;
+
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                code = nex.ErrorCode;
+                location = nex.Location;
+                message = nex.Message;
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                code = inex.ErrorCode;
+                location = inex.Location;
+                message = inex.Message;
+            }
+
+            var escapedCode = AnalysisMessageFormatter.Escape(code);
+            var escapedLoc = AnalysisMessageFormatter.Escape(location);
+            var escapedMsg = AnalysisMessageFormatter.Escape(message);
+            var errorMsg = $"❌ *News Fetch Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
+            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
         }
     }
 
@@ -572,7 +678,30 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: DOM/chart request failed for {Symbol}", normalizedSymbol);
-            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Failed to fetch DOM or chart. Please try again in a moment."), ct).ConfigureAwait(false);
+            
+            var code = "ERR_UNKNOWN";
+            var location = "BotPollingService";
+            var message = ex.Message;
+
+            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+            {
+                code = nex.ErrorCode;
+                location = nex.Location;
+                message = nex.Message;
+            }
+            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+            {
+                code = inex.ErrorCode;
+                location = inex.Location;
+                message = inex.Message;
+            }
+
+            var escapedCode = AnalysisMessageFormatter.Escape(code);
+            var escapedLoc = AnalysisMessageFormatter.Escape(location);
+            var escapedMsg = AnalysisMessageFormatter.Escape(message);
+            var errorMsg = $"❌ *DOM Request Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
+            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
         }
     }
 
@@ -583,7 +712,24 @@ public sealed class BotPollingService : BackgroundService
 
         var client = _httpFactory.CreateClient(WebApiHttpClient);
         var response = await client.GetAsync(url, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions, ct).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
+            response.EnsureSuccessStatusCode();
+        }
 
         var payload = await response.Content.ReadFromJsonAsync<TelegramNewsResponse>(s_jsonOptions, ct).ConfigureAwait(false);
         return payload?.Items ?? Array.Empty<TelegramNewsItem>();
@@ -597,38 +743,24 @@ public sealed class BotPollingService : BackgroundService
         var client = _httpFactory.CreateClient(WebApiHttpClient);
         var response = await client.GetAsync(url, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse? errResp = null;
+            try
+            {
+                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions, ct).ConfigureAwait(false);
+            }
+            catch { }
+
+            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    errResp.ErrorCode,
+                    errResp.Location,
+                    errResp.Message);
+            }
             return null;
+        }
 
         return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions, ct).ConfigureAwait(false);
     }
-
-    private sealed record TelegramUpdatesResponse(
-        [property: JsonPropertyName("ok")] bool Ok,
-        [property: JsonPropertyName("result")] TelegramUpdate[]? Result);
-
-    private sealed record TelegramUpdate(
-        [property: JsonPropertyName("update_id")] long UpdateId,
-        [property: JsonPropertyName("message")] TelegramMessage? Message);
-
-    private sealed record TelegramMessage(
-        [property: JsonPropertyName("text")] string? Text,
-        [property: JsonPropertyName("chat")] TelegramChat? Chat);
-
-    private sealed record TelegramChat(
-        [property: JsonPropertyName("id")] long Id);
-
-    private sealed record TelegramNewsResponse(
-        string Symbol,
-        int Count,
-        IReadOnlyList<TelegramNewsItem> Items);
-
-    private sealed record TelegramNewsItem(
-        long Id,
-        string Symbol,
-        string Title,
-        string Source,
-        string Url,
-        DateTime PublishedAtUtc,
-        string Summary,
-        string? Sentiment);
 }

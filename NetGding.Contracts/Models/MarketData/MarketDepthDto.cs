@@ -10,4 +10,3 @@ public sealed record MarketDepthDto(
     double Spread,
     double SpreadPercentage);
 
-public readonly record struct DepthEntryDto(double Price, double Quantity);

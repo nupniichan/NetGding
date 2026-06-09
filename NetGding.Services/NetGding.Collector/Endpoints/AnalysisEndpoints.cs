@@ -51,11 +51,22 @@ public static class AnalysisEndpoints
         {
             return Results.BadRequest(ex.Message);
         }
+        catch (NetGding.Contracts.Exceptions.NetGdingException ex)
+        {
+            logger.LogError(ex, "On-demand analysis NetGdingException for {Symbol} [{ErrorCode} at {Location}]: {Message}",
+                request.Symbol, ex.ErrorCode, ex.Location, ex.Message);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(ex.ErrorCode, ex.Location, ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "On-demand analysis failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
                 request.Symbol, request.Timeframe, request.Exchange, request.MarketType);
-            return Results.StatusCode(500);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                "ERR_INTERNAL",
+                "Collector.OnDemandAsync",
+                ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
         }
     }
 

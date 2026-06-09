@@ -2,17 +2,6 @@ using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Collector.Services.MarketData;
 
-internal enum CandleIntervalUnit
-{
-    Minute,
-    Hour,
-    Day,
-    Week,
-    Month
-}
-
-internal readonly record struct CandleTimeFrame(int Value, CandleIntervalUnit Unit);
-
 internal static class TimeframeResolver
 {
     public static bool IsAutoScheduled(string tfName) =>

@@ -1,13 +1,1 @@
-namespace NetGding.WebApi.Models;
-
-public sealed record SupportedSymbol(
-    string Symbol,
-    bool IsEnabled,
-    string? Name = null,
-    IReadOnlyList<string>? Exchanges = null);
-
-public sealed record SupportConfigResponse(
-    IReadOnlyList<SupportedSymbol> Symbols,
-    IReadOnlyList<string> Timeframes,
-    string Environment,
-    string Version);
+// This file is obsolete. Models have been split into SupportedSymbol.cs and SupportConfigResponse.cs.

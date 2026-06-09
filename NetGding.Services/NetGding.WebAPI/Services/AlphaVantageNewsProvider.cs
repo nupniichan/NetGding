@@ -51,12 +51,20 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
             {
                 if (response is not null)
                 {
-                    if (!string.IsNullOrWhiteSpace(response.Note))
-                        _logger.LogWarning("AlphaVantageNewsProvider: Note received: {Note}", response.Note);
-                    if (!string.IsNullOrWhiteSpace(response.Information))
-                        _logger.LogWarning("AlphaVantageNewsProvider: Information received: {Info}", response.Information);
                     if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
-                        _logger.LogError("AlphaVantageNewsProvider: Error received: {Error}", response.ErrorMessage);
+                    {
+                        throw new NetGding.Contracts.Exceptions.NetGdingException(
+                            "ERR_ALPHAVANTAGE_API_ERROR",
+                            "AlphaVantageNewsProvider.GetNewsAsync",
+                            $"AlphaVantage API error: {response.ErrorMessage}");
+                    }
+                    if (!string.IsNullOrWhiteSpace(response.Note))
+                    {
+                        throw new NetGding.Contracts.Exceptions.NetGdingException(
+                            "ERR_ALPHAVANTAGE_RATE_LIMIT",
+                            "AlphaVantageNewsProvider.GetNewsAsync",
+                            $"AlphaVantage API rate limit: {response.Note}");
+                    }
                 }
                 return [];
             }
@@ -86,10 +94,12 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
 
             return results;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
-            _logger.LogError(ex, "AlphaVantageNewsProvider: failed to fetch news for ticker {Ticker}", ticker);
-            return [];
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_ALPHAVANTAGE_API_FAILED",
+                "AlphaVantageNewsProvider.GetNewsAsync",
+                $"AlphaVantage API call failed for ticker '{ticker}': {ex.Message}", ex);
         }
     }
 
@@ -130,41 +140,5 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
             hash *= 1099511628211UL;
         }
         return (long)hash;
-    }
-
-    private sealed class AlphaVantageNewsResponse
-    {
-        [JsonPropertyName("feed")]
-        public List<AlphaVantageFeedItem>? Feed { get; set; }
-
-        [JsonPropertyName("Note")]
-        public string? Note { get; set; }
-
-        [JsonPropertyName("Information")]
-        public string? Information { get; set; }
-
-        [JsonPropertyName("Error Message")]
-        public string? ErrorMessage { get; set; }
-    }
-
-    private sealed class AlphaVantageFeedItem
-    {
-        [JsonPropertyName("title")]
-        public string Title { get; set; } = "";
-
-        [JsonPropertyName("url")]
-        public string Url { get; set; } = "";
-
-        [JsonPropertyName("time_published")]
-        public string TimePublished { get; set; } = "";
-
-        [JsonPropertyName("summary")]
-        public string Summary { get; set; } = "";
-
-        [JsonPropertyName("source")]
-        public string Source { get; set; } = "";
-
-        [JsonPropertyName("overall_sentiment_label")]
-        public string OverallSentimentLabel { get; set; } = "";
     }
 }
