@@ -13,5 +13,6 @@ RUN dotnet publish "NetGding.Collector.csproj" -c Release -o /app/publish /p:Use
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
+USER app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "NetGding.Collector.dll"]
