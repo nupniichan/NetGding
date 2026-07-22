@@ -1,8 +1,7 @@
-namespace NetGding.Contracts.Models.Indicators.Volume
+namespace NetGding.Contracts.Models.Indicators.Volume;
+
+public sealed class Volume
 {
-    public class Volume
-    {
-        public static readonly List<int> Periods = new List<int> { 20 };
-        public Dictionary<string, float> Values { get; set; } = new Dictionary<string, float>();
-    }
-}
+    public static readonly IReadOnlyList<int> Periods = [20];
+    public Dictionary<string, float> Values { get; set; } = new();
+}

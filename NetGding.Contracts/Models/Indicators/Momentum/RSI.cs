@@ -1,9 +1,8 @@
-namespace NetGding.Contracts.Models.Indicators.Momentum
+namespace NetGding.Contracts.Models.Indicators.Momentum;
+
+// Relative Strength Index
+public sealed class RSI
 {
-    // Relative Strength Index
-    public class RSI
-    {
-        public static readonly List<int> Periods = new List<int> { 14 };
-        public Dictionary<string, float> Values { get; set; } = new Dictionary<string, float>();
-    }
-}
+    public static readonly IReadOnlyList<int> Periods = [14];
+    public Dictionary<string, float> Values { get; set; } = new();
+}

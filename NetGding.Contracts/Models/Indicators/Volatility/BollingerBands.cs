@@ -1,9 +1,8 @@
-namespace NetGding.Contracts.Models.Indicators.Volatility
+namespace NetGding.Contracts.Models.Indicators.Volatility;
+
+public sealed class BollingerBands
 {
-    public class BollingerBands
-    {
-        public static readonly List<int> Periods = new List<int> { 20 };
-        public static readonly float StandardDeviationMultiplier = 2f;
-        public Dictionary<string, float> Values { get; set; } = new Dictionary<string, float>();
-    }
-}
+    public static readonly IReadOnlyList<int> Periods = [20];
+    public const float StandardDeviationMultiplier = 2f;
+    public Dictionary<string, float> Values { get; set; } = new();
+}

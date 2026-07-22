@@ -1,7 +1,6 @@
-namespace NetGding.Contracts.Models.Indicators.Volume
+namespace NetGding.Contracts.Models.Indicators.Volume;
+
+public sealed class VWAP
 {
-    public class VWAP
-    {
-        public Dictionary<string, float> Values { get; set; } = new Dictionary<string, float>();
-    }
-}
+    public Dictionary<string, float> Values { get; set; } = new();
+}
