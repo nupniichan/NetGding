@@ -57,76 +57,21 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         bool chartOnly = false,
         CancellationToken ct = default)
     {
-        if (!TimeframeResolver.TryResolve(timeframe, out var tf))
+        if (!TimeframeResolver.TryResolve(timeframe, out _))
             throw new ArgumentException($"Invalid timeframe '{timeframe}'. Allowed: 15m, 1h, 4h, 1d, 1w, 1m.", nameof(timeframe));
         if (!TryResolveMarketType(marketType, out var resolvedMarketType))
             throw new ArgumentException($"Invalid market type '{marketType}'. Allowed: spot, future.", nameof(marketType));
 
-        var o = _options.CurrentValue;
-        var toUtc = DateTime.UtcNow;
-        var fromUtc = toUtc.AddDays(-ComputeLookbackDays(timeframe, o.LookbackDays));
-
-        _logger.LogInformation(
-            "OnDemandAnalyzer: fetching {Symbol} [{TimeFrame}, {Exchange}, {MarketType}] from {From:O} to {To:O}",
-            symbol, timeframe, exchange, resolvedMarketType, fromUtc, toUtc);
-
-        var collector = _collectorResolver.Resolve(exchange, resolvedMarketType);
-        if (collector is null)
-        {
-            throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_COLLECTOR_NOT_FOUND",
-                "OnDemandAnalyzer.AnalyzeAsync",
-                $"No collector resolved for exchange '{exchange}' and market type '{resolvedMarketType}'.");
-        }
-        var bars = await collector
-            .CollectAsync(symbol, fromUtc, toUtc, timeframe, ct)
-            .ConfigureAwait(false);
-
-        if (bars.Count == 0)
-        {
-            throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_NO_MARKET_DATA",
-                "OnDemandAnalyzer.AnalyzeAsync",
-                $"No market data (OHLCV) found for {symbol} on {exchange} [{timeframe}].");
-        }
-
+        var bars = await FetchMarketBarsAsync(symbol, timeframe, exchange, resolvedMarketType, ct).ConfigureAwait(false);
         var market = ResolveMarket(symbol);
         var indicators = ComputeIndicators(bars, timeframe);
-        var currentPrice = bars.Count > 0 ? (decimal)bars[^1].Close : 0m;
-        var regime = MarketRegimeDetector.Detect(indicators, bars.Count > 0 ? bars[^1].Close : 0);
-
-        int? fngIndex = null;
-        string? fngClassification = null;
-        LlmSignal? signal = null;
-        SignalResult? signalResult = null;
-        RiskManagement? risk = null;
-        MarketStructure? marketStructure = null;
+        var currentPrice = (decimal)bars[^1].Close;
+        var regime = MarketRegimeDetector.Detect(indicators, bars[^1].Close);
 
         bool isChartRequest = chartOnly || !string.IsNullOrWhiteSpace(chartSymbol);
-
-        if (!isChartRequest)
-        {
-            var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
-
-            if (market == AssetMarket.Crypto)
-            {
-                var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
-                if (fng != null)
-                {
-                    fngIndex = fng.Value;
-                    fngClassification = fng.Classification;
-                }
-            }
-
-            var request = new AnalysisRequest(
-                symbol, market, resolvedMarketType, timeframe, bars, indicators, news, regime,
-                fngIndex, fngClassification);
-            signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
-
-            signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
-            risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, resolvedMarketType);
-            marketStructure = ComputeMarketStructure(indicators);
-        }
+        var (signal, signalResult, risk, marketStructure, fngIndex, fngClass) = isChartRequest
+            ? (null, null, null, null, null, null)
+            : await ExecuteFullAnalysisAsync(symbol, timeframe, resolvedMarketType, market, bars, indicators, currentPrice, regime, ct).ConfigureAwait(false);
 
         var result = new AnalysisResult
         {
@@ -148,7 +93,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             MarketRegime = regime,
             SignalSource = "hybrid",
             FearAndGreedIndex = fngIndex,
-            FearAndGreedClassification = fngClassification,
+            FearAndGreedClassification = fngClass,
             AnalyzedAtUtc = DateTime.UtcNow
         };
 
@@ -157,38 +102,106 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             symbol, timeframe, result.Decision, result.Confidence, result.MarketRegime);
 
         var notification = new AnalysisNotification { Result = result };
+        await RenderChartIfEnabledAsync(notification, bars, result, exchange, isChartRequest, ct).ConfigureAwait(false);
+        return notification;
+    }
 
-        if (_options.CurrentValue.ChartEnabled && bars.Count > 0)
+    private async Task<IReadOnlyList<OhlcvBar>> FetchMarketBarsAsync(
+        string symbol, string timeframe, string exchange, MarketType marketType, CancellationToken ct)
+    {
+        var o = _options.CurrentValue;
+        var toUtc = DateTime.UtcNow;
+        var fromUtc = toUtc.AddDays(-ComputeLookbackDays(timeframe, o.LookbackDays));
+
+        _logger.LogInformation(
+            "OnDemandAnalyzer: fetching {Symbol} [{TimeFrame}, {Exchange}, {MarketType}] from {From:O} to {To:O}",
+            symbol, timeframe, exchange, marketType, fromUtc, toUtc);
+
+        var collector = _collectorResolver.Resolve(exchange, marketType);
+        if (collector is null)
         {
-            try
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_COLLECTOR_NOT_FOUND",
+                "OnDemandAnalyzer.FetchMarketBarsAsync",
+                $"No collector resolved for exchange '{exchange}' and market type '{marketType}'.");
+        }
+
+        var bars = await collector.CollectAsync(symbol, fromUtc, toUtc, timeframe, ct).ConfigureAwait(false);
+        if (bars.Count == 0)
+        {
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                "ERR_NO_MARKET_DATA",
+                "OnDemandAnalyzer.FetchMarketBarsAsync",
+                $"No market data (OHLCV) found for {symbol} on {exchange} [{timeframe}].");
+        }
+
+        return bars;
+    }
+
+    private async Task<(LlmSignal? Signal, SignalResult SignalResult, RiskManagement Risk, MarketStructure Structure, int? FngIndex, string? FngClass)>
+        ExecuteFullAnalysisAsync(
+            string symbol, string timeframe, MarketType marketType, AssetMarket market,
+            IReadOnlyList<OhlcvBar> bars, IndicatorSnapshot indicators, decimal currentPrice, MarketRegime regime, CancellationToken ct)
+    {
+        int? fngIndex = null;
+        string? fngClass = null;
+
+        var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
+        if (market == AssetMarket.Crypto)
+        {
+            var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
+            if (fng != null)
             {
-                var chartBytes = await _chartRenderer.RenderAsync(bars, result, exchange, ct).ConfigureAwait(false);
-                if (chartBytes.Length > 0)
-                {
-                    notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
-                }
-                else if (isChartRequest)
-                {
-                    throw new NetGding.Contracts.Exceptions.NetGdingException(
-                        "ERR_CHART_RENDER_FAILED",
-                        "OnDemandAnalyzer.AnalyzeAsync",
-                        "Chart rendering completed but returned empty bytes.");
-                }
-            }
-            catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
-            {
-                if (isChartRequest)
-                {
-                    throw new NetGding.Contracts.Exceptions.NetGdingException(
-                        "ERR_CHART_RENDER_FAILED",
-                        "OnDemandAnalyzer.AnalyzeAsync",
-                        $"Chart rendering failed: {ex.Message}", ex);
-                }
-                _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", symbol);
+                fngIndex = fng.Value;
+                fngClass = fng.Classification;
             }
         }
 
-        return notification;
+        var request = new AnalysisRequest(
+            symbol, market, marketType, timeframe, bars, indicators, news, regime,
+            fngIndex, fngClass);
+
+        var signal = await _llm.AnalyzeAsync(request, ct).ConfigureAwait(false);
+        var signalResult = _signalEngine.Evaluate(signal, indicators, symbol, regime);
+        var risk = _riskCalculator.Calculate(signalResult.Decision, currentPrice, indicators, marketType);
+        var marketStructure = ComputeMarketStructure(indicators);
+
+        return (signal, signalResult, risk, marketStructure, fngIndex, fngClass);
+    }
+
+    private async Task RenderChartIfEnabledAsync(
+        AnalysisNotification notification, IReadOnlyList<OhlcvBar> bars, AnalysisResult result,
+        string exchange, bool isChartRequest, CancellationToken ct)
+    {
+        if (!_options.CurrentValue.ChartEnabled || bars.Count == 0)
+            return;
+
+        try
+        {
+            var chartBytes = await _chartRenderer.RenderAsync(bars, result, exchange, ct).ConfigureAwait(false);
+            if (chartBytes.Length > 0)
+            {
+                notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
+            }
+            else if (isChartRequest)
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    "ERR_CHART_RENDER_FAILED",
+                    "OnDemandAnalyzer.RenderChartIfEnabledAsync",
+                    "Chart rendering completed but returned empty bytes.");
+            }
+        }
+        catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
+        {
+            if (isChartRequest)
+            {
+                throw new NetGding.Contracts.Exceptions.NetGdingException(
+                    "ERR_CHART_RENDER_FAILED",
+                    "OnDemandAnalyzer.RenderChartIfEnabledAsync",
+                    $"Chart rendering failed: {ex.Message}", ex);
+            }
+            _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", notification.Result.Symbol);
+        }
     }
 
     private static bool TryResolveMarketType(string requested, out MarketType marketType) =>

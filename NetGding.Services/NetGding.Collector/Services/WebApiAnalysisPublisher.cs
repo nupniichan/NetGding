@@ -31,12 +31,12 @@ public sealed class WebApiAnalysisPublisher : IAnalysisPublisher
 
         var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/publish";
         var maxRetries = o.PublishMaxRetries;
+        var http = _httpFactory.CreateClient(nameof(WebApiAnalysisPublisher));
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                var http = _httpFactory.CreateClient(nameof(WebApiAnalysisPublisher));
                 var response = await http.PostAsJsonAsync(url, notification, ct).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 

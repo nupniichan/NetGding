@@ -36,12 +36,9 @@ public sealed class CollectorGateway : ICollectorGateway
 
         try
         {
+            var http = _httpFactory.CreateClient(nameof(CollectorGateway));
             var response = await HttpRetryHelper.ExecuteAsync(
-                () =>
-                {
-                    var http = _httpFactory.CreateClient(nameof(CollectorGateway));
-                    return http.PostAsJsonAsync(url, request, ct);
-                },
+                () => http.PostAsJsonAsync(url, request, ct),
                 maxRetries: Math.Max(1, o.MaxRetries),
                 baseDelaySeconds: 2,
                 onRetry: (attempt, max, status) => _logger.LogWarning(
@@ -97,12 +94,9 @@ public sealed class CollectorGateway : ICollectorGateway
 
         try
         {
+            var http = _httpFactory.CreateClient(nameof(CollectorGateway));
             var response = await HttpRetryHelper.ExecuteAsync(
-                () =>
-                {
-                    var http = _httpFactory.CreateClient(nameof(CollectorGateway));
-                    return http.GetAsync(url, ct);
-                },
+                () => http.GetAsync(url, ct),
                 maxRetries: Math.Max(1, o.MaxRetries),
                 baseDelaySeconds: 2,
                 onRetry: (attempt, max, status) => _logger.LogWarning(
