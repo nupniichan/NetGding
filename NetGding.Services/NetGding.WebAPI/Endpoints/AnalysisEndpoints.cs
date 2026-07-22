@@ -71,7 +71,7 @@ public static class AnalysisEndpoints
 
             if (!normalizedRequest.ChartOnly && string.IsNullOrWhiteSpace(normalizedRequest.ChartSymbol))
             {
-                analysisResultStore.Store(notification.Result);
+                await analysisResultStore.StoreAsync(notification.Result, ct).ConfigureAwait(false);
             }
 
             return Results.Ok(notification);
@@ -113,7 +113,7 @@ public static class AnalysisEndpoints
 
         try
         {
-            analysisResultStore.Store(result);
+            await analysisResultStore.StoreAsync(result, ct).ConfigureAwait(false);
 
             await Task.WhenAll(
                 telegramForwarder.ForwardAsync(notification, ct),
