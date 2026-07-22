@@ -43,7 +43,7 @@ public static class IndicatorEndpoints
             return Results.StatusCode(502);
 
         var result = notification.Result;
-        analysisResultStore.Store(result);
+        await analysisResultStore.StoreAsync(result, ct).ConfigureAwait(false);
 
         var response = new IndicatorResponseDto(ToSummary(result), detail ? result.Indicators : null);
         return Results.Ok(response);
