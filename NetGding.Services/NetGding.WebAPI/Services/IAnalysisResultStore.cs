@@ -4,7 +4,7 @@ namespace NetGding.WebApi.Services;
 
 public interface IAnalysisResultStore
 {
-    void Store(AnalysisResult result);
+    Task StoreAsync(AnalysisResult result, CancellationToken ct = default);
     AnalysisResult? GetLatest(string symbol, string timeframe);
     IReadOnlyList<AnalysisResult> GetHistory(
         string symbol,
@@ -14,3 +14,4 @@ public interface IAnalysisResultStore
         int page,
         int pageSize);
 }
+

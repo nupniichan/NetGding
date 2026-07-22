@@ -49,11 +49,13 @@ public static class MarketRegimeDetector
         return spread > TrendingEmaSpreadThreshold;
     }
 
+    private const float MacdDirectionalThreshold = 0.001f;
+
     private static bool IsMacdDirectional(IndicatorSnapshot indicators)
     {
         if (!indicators.Macd.TryGetValue("Histogram", out var histogram))
             return false;
 
-        return Math.Abs(histogram) > 0f;
+        return Math.Abs(histogram) > MacdDirectionalThreshold;
     }
 }

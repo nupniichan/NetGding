@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.WebApi.Persistence;
 
@@ -12,17 +13,17 @@ public sealed class SqliteAnalysisResultStore : IAnalysisResultStore
         _dbContext = dbContext;
     }
 
-    public void Store(AnalysisResult result)
+    public async Task StoreAsync(AnalysisResult result, CancellationToken ct = default)
     {
-        var exists = _dbContext.AnalysisResults.Any(x => 
+        var exists = await _dbContext.AnalysisResults.AnyAsync(x => 
             x.Symbol == result.Symbol && 
             x.Timeframe == result.Timeframe && 
-            x.AnalyzedAtUtc == result.AnalyzedAtUtc);
+            x.AnalyzedAtUtc == result.AnalyzedAtUtc, ct).ConfigureAwait(false);
 
         if (!exists)
         {
-            _dbContext.AnalysisResults.Add(result);
-            _dbContext.SaveChanges();
+            await _dbContext.AnalysisResults.AddAsync(result, ct).ConfigureAwait(false);
+            await _dbContext.SaveChangesAsync(ct).ConfigureAwait(false);
         }
     }
 

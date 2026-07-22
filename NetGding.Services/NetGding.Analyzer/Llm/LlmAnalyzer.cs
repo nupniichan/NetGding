@@ -19,7 +19,6 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _httpClient;
     private readonly LlmOptions _options;
     private readonly ILogger<LlmAnalyzer> _logger;
@@ -185,48 +184,40 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         };
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, url)
-                {
-                    Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
-                };
+                Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+            };
 
-                if (!string.IsNullOrWhiteSpace(_options.ApiKey))
-                    request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
+            if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
 
-                using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
 
-                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxAttempts)
-                {
-                    var retryAfter = response.Headers.RetryAfter?.Delta
-                        ?? TimeSpan.FromSeconds(Math.Pow(2, attempt) * 10);
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxAttempts)
+            {
+                var retryAfter = response.Headers.RetryAfter?.Delta
+                    ?? TimeSpan.FromSeconds(Math.Pow(2, attempt) * 10);
 
-                    _logger.LogWarning(
-                        "LLM: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
-                        retryAfter, attempt, maxAttempts);
+                _logger.LogWarning(
+                    "LLM: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
+                    retryAfter, attempt, maxAttempts);
 
-                    await Task.Delay(retryAfter, ct).ConfigureAwait(false);
-                    continue;
-                }
-
-                response.EnsureSuccessStatusCode();
-
-                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                using var doc = JsonDocument.Parse(body);
-                return doc.RootElement
-                    .GetProperty("choices")[0]
-                    .GetProperty("message")
-                    .GetProperty("content")
-                    .GetString() ?? "";
+                await Task.Delay(retryAfter, ct).ConfigureAwait(false);
+                continue;
             }
-        }
-        finally
-        {
-            _gate.Release();
+
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "";
         }
 
         throw new HttpRequestException("LLM: max retry attempts exceeded.");
