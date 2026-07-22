@@ -168,10 +168,7 @@ public sealed class BinanceMarketDataCollector : IExchangeMarketDataCollector
         }
     }
 
-    private static double ParseInvariant(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return 0d;
-        return double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
-    }
+    private static double ParseInvariant(string? value) =>
+        MarketParsingHelper.ParseInvariantDouble(value);
 }
+

@@ -105,28 +105,7 @@ public static class AnalysisEndpoints
         }
     }
 
-    private static bool TryResolveMarketType(string requested, out MarketType marketType)
-    {
-        if (string.IsNullOrWhiteSpace(requested))
-        {
-            marketType = default;
-            return false;
-        }
-
-        var normalized = requested.Trim().ToLowerInvariant();
-        if (normalized == "spot")
-        {
-            marketType = MarketType.Spot;
-            return true;
-        }
-
-        if (normalized == "future")
-        {
-            marketType = MarketType.Future;
-            return true;
-        }
-
-        marketType = default;
-        return false;
-    }
+    private static bool TryResolveMarketType(string requested, out MarketType marketType) =>
+        MarketParsingHelper.TryResolveMarketType(requested, out marketType);
 }
+

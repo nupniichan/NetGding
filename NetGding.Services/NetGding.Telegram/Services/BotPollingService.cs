@@ -31,6 +31,14 @@ public sealed class BotPollingService : BackgroundService
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
+    private static readonly HashSet<string> s_allowedTimeframes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "15m", "1h", "4h", "1d", "1w", "1m"
+    };
+    private static readonly HashSet<string> s_allowedExchanges = new(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
+    private static readonly HashSet<string> s_allowedMarketTypes = new(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+
+
     public BotPollingService(
         IHttpClientFactory httpFactory,
         IOptionsMonitor<TelegramOptions> options,
@@ -211,11 +219,7 @@ public sealed class BotPollingService : BackgroundService
         var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
         var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
 
-        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "15m", "1h", "4h", "1d", "1w", "1m"
-        };
-        if (!allowedTimeframes.Contains(timeframe))
+        if (!s_allowedTimeframes.Contains(timeframe))
         {
             await _notifier.SendTextAsync(
                 chatId,
@@ -224,8 +228,7 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
-        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
-        if (!allowedExchanges.Contains(exchange))
+        if (!s_allowedExchanges.Contains(exchange))
         {
             await _notifier.SendTextAsync(
                 chatId,
@@ -234,8 +237,7 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
-        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
-        if (!allowedMarketTypes.Contains(marketType))
+        if (!s_allowedMarketTypes.Contains(marketType))
         {
             await _notifier.SendTextAsync(
                 chatId,
@@ -283,33 +285,7 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: on-demand analysis failed for {Symbol} ({Timeframe})", symbol, timeframe);
-            
-            var code = "ERR_UNKNOWN";
-            var location = "BotPollingService";
-            var message = ex.Message;
-
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                code = nex.ErrorCode;
-                location = nex.Location;
-                message = nex.Message;
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                code = inex.ErrorCode;
-                location = inex.Location;
-                message = inex.Message;
-            }
-
-            var escapedCode = AnalysisMessageFormatter.Escape(code);
-            var escapedLoc = AnalysisMessageFormatter.Escape(location);
-            var escapedMsg = AnalysisMessageFormatter.Escape(message);
-            var errorMsg = $"❌ *Analysis Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
-
-            await _notifier.SendTextAsync(
-                chatId,
-                errorMsg,
-                ct).ConfigureAwait(false);
+            await SendFormattedErrorAsync(chatId, "Analysis Failed", ex, ct).ConfigureAwait(false);
         }
     }
 
@@ -387,30 +363,7 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: failed to handle /fagi command");
-            
-            var code = "ERR_UNKNOWN";
-            var location = "BotPollingService";
-            var message = ex.Message;
-
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                code = nex.ErrorCode;
-                location = nex.Location;
-                message = nex.Message;
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                code = inex.ErrorCode;
-                location = inex.Location;
-                message = inex.Message;
-            }
-
-            var escapedCode = AnalysisMessageFormatter.Escape(code);
-            var escapedLoc = AnalysisMessageFormatter.Escape(location);
-            var escapedMsg = AnalysisMessageFormatter.Escape(message);
-            var errorMsg = $"❌ *FAGI Command Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
-
-            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
+            await SendFormattedErrorAsync(chatId, "FAGI Command Failed", ex, ct).ConfigureAwait(false);
         }
     }
 
@@ -447,25 +400,19 @@ public sealed class BotPollingService : BackgroundService
         var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
         var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
 
-        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "15m", "1h", "4h", "1d", "1w", "1m"
-        };
-        if (!allowedTimeframes.Contains(timeframe))
+        if (!s_allowedTimeframes.Contains(timeframe))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported timeframes: 15m, 1h, 4h, 1d, 1w, 1m."), ct).ConfigureAwait(false);
             return;
         }
 
-        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
-        if (!allowedExchanges.Contains(exchange))
+        if (!s_allowedExchanges.Contains(exchange))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported exchanges: binance, okx."), ct).ConfigureAwait(false);
             return;
         }
 
-        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
-        if (!allowedMarketTypes.Contains(marketType))
+        if (!s_allowedMarketTypes.Contains(marketType))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported market types: spot, future."), ct).ConfigureAwait(false);
             return;
@@ -506,30 +453,7 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: chart fetch failed for {Symbol} ({Timeframe})", normalizedSymbol, timeframe);
-            
-            var code = "ERR_UNKNOWN";
-            var location = "BotPollingService";
-            var message = ex.Message;
-
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                code = nex.ErrorCode;
-                location = nex.Location;
-                message = nex.Message;
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                code = inex.ErrorCode;
-                location = inex.Location;
-                message = inex.Message;
-            }
-
-            var escapedCode = AnalysisMessageFormatter.Escape(code);
-            var escapedLoc = AnalysisMessageFormatter.Escape(location);
-            var escapedMsg = AnalysisMessageFormatter.Escape(message);
-            var errorMsg = $"❌ *Chart Generation Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
-
-            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
+            await SendFormattedErrorAsync(chatId, "Chart Generation Failed", ex, ct).ConfigureAwait(false);
         }
     }
 
@@ -585,30 +509,7 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: news fetch failed for {Symbol}", normalizedSymbol);
-            
-            var code = "ERR_UNKNOWN";
-            var location = "BotPollingService";
-            var message = ex.Message;
-
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                code = nex.ErrorCode;
-                location = nex.Location;
-                message = nex.Message;
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                code = inex.ErrorCode;
-                location = inex.Location;
-                message = inex.Message;
-            }
-
-            var escapedCode = AnalysisMessageFormatter.Escape(code);
-            var escapedLoc = AnalysisMessageFormatter.Escape(location);
-            var escapedMsg = AnalysisMessageFormatter.Escape(message);
-            var errorMsg = $"❌ *News Fetch Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
-
-            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
+            await SendFormattedErrorAsync(chatId, "News Fetch Failed", ex, ct).ConfigureAwait(false);
         }
     }
 
@@ -628,25 +529,19 @@ public sealed class BotPollingService : BackgroundService
         var exchange = "binance";
         var marketType = "spot";
 
-        var allowedTimeframes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "15m", "1h", "4h", "1d", "1w", "1m"
-        };
-        if (!allowedTimeframes.Contains(timeframe))
+        if (!s_allowedTimeframes.Contains(timeframe))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported timeframes: 15m, 1h, 4h, 1d, 1w, 1m."), ct).ConfigureAwait(false);
             return;
         }
 
-        var allowedExchanges = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
-        if (!allowedExchanges.Contains(exchange))
+        if (!s_allowedExchanges.Contains(exchange))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported exchanges: binance, okx."), ct).ConfigureAwait(false);
             return;
         }
 
-        var allowedMarketTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
-        if (!allowedMarketTypes.Contains(marketType))
+        if (!s_allowedMarketTypes.Contains(marketType))
         {
             await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported market types: spot, future."), ct).ConfigureAwait(false);
             return;
@@ -678,30 +573,7 @@ public sealed class BotPollingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "BotPollingService: DOM/chart request failed for {Symbol}", normalizedSymbol);
-            
-            var code = "ERR_UNKNOWN";
-            var location = "BotPollingService";
-            var message = ex.Message;
-
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                code = nex.ErrorCode;
-                location = nex.Location;
-                message = nex.Message;
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                code = inex.ErrorCode;
-                location = inex.Location;
-                message = inex.Message;
-            }
-
-            var escapedCode = AnalysisMessageFormatter.Escape(code);
-            var escapedLoc = AnalysisMessageFormatter.Escape(location);
-            var escapedMsg = AnalysisMessageFormatter.Escape(message);
-            var errorMsg = $"❌ *DOM Request Failed*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
-
-            await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
+            await SendFormattedErrorAsync(chatId, "DOM Request Failed", ex, ct).ConfigureAwait(false);
         }
     }
 
@@ -762,5 +634,32 @@ public sealed class BotPollingService : BackgroundService
         }
 
         return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions, ct).ConfigureAwait(false);
+    }
+
+    private async Task SendFormattedErrorAsync(string chatId, string title, Exception ex, CancellationToken ct)
+    {
+        var code = "ERR_UNKNOWN";
+        var location = "BotPollingService";
+        var message = ex.Message;
+
+        if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
+        {
+            code = nex.ErrorCode;
+            location = nex.Location;
+            message = nex.Message;
+        }
+        else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
+        {
+            code = inex.ErrorCode;
+            location = inex.Location;
+            message = inex.Message;
+        }
+
+        var escapedCode = AnalysisMessageFormatter.Escape(code);
+        var escapedLoc = AnalysisMessageFormatter.Escape(location);
+        var escapedMsg = AnalysisMessageFormatter.Escape(message);
+        var errorMsg = $"❌ *{title}*\n• *Code:* `{escapedCode}`\n• *Location:* `{escapedLoc}`\n• *Message:* {escapedMsg}";
+
+        await _notifier.SendTextAsync(chatId, errorMsg, ct).ConfigureAwait(false);
     }
 }
