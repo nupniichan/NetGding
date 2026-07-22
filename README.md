@@ -383,4 +383,4 @@ Take a look at [Apache License 2.0](https://github.com/nupniichan/NetGding/blob/
 
 ---
 
-Thanks for visiting my repository ⸜(｡˃ ᵕ ˂ )⸝♡
+ <p align="center">Thanks for visiting my repository ⸜(｡˃ ᵕ ˂ )⸝♡</p>
