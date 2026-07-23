@@ -61,7 +61,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         if (!TimeframeResolver.TryResolve(timeframe, out _))
             throw new ArgumentException($"Invalid timeframe '{timeframe}'. Allowed: 15m, 1h, 4h, 1d, 1w, 1m.", nameof(timeframe));
         if (!TryResolveMarketType(marketType, out var resolvedMarketType))
-            throw new ArgumentException($"Invalid market type '{marketType}'. Allowed: spot, future.", nameof(marketType));
+            throw new ArgumentException($"Invalid market type '{marketType}'. Allowed: spot.", nameof(marketType));
 
         var bars = await FetchMarketBarsAsync(symbol, timeframe, exchange, resolvedMarketType, ct).ConfigureAwait(false);
         var market = ResolveMarket(symbol);

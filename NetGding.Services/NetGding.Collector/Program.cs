@@ -41,20 +41,10 @@ builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
         sp.GetRequiredService<ILogger<BinanceMarketDataCollector>>(),
         NetGding.Contracts.Models.MarketData.MarketType.Spot));
 builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
-    new BinanceMarketDataCollector(
-        sp.GetRequiredService<IHttpClientFactory>(),
-        sp.GetRequiredService<ILogger<BinanceMarketDataCollector>>(),
-        NetGding.Contracts.Models.MarketData.MarketType.Future));
-builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
     new OkxMarketDataCollector(
         sp.GetRequiredService<IHttpClientFactory>(),
         sp.GetRequiredService<ILogger<OkxMarketDataCollector>>(),
         NetGding.Contracts.Models.MarketData.MarketType.Spot));
-builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
-    new OkxMarketDataCollector(
-        sp.GetRequiredService<IHttpClientFactory>(),
-        sp.GetRequiredService<ILogger<OkxMarketDataCollector>>(),
-        NetGding.Contracts.Models.MarketData.MarketType.Future));
 builder.Services.AddSingleton<IMarketDataCollectorResolver, MarketDataCollectorResolver>();
 
 // WebApiAnalysisPublisher removed: analysis results now returned directly in HTTP response

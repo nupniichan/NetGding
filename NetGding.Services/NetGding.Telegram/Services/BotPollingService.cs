@@ -39,7 +39,7 @@ public sealed class BotPollingService : BackgroundService
         "15m", "1h", "4h", "1d", "1w", "1m"
     };
     private static readonly HashSet<string> s_allowedExchanges = new(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
-    private static readonly HashSet<string> s_allowedMarketTypes = new(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+    private static readonly HashSet<string> s_allowedMarketTypes = new(StringComparer.OrdinalIgnoreCase) { "spot" };
 
 
     public BotPollingService(

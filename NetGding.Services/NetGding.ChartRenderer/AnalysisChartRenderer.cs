@@ -51,7 +51,7 @@ public sealed class AnalysisChartRenderer : IChartRenderer
         {
             var tvSymbol = !string.IsNullOrWhiteSpace(result.ChartSymbol)
                 ? result.ChartSymbol
-                : FormatTradingViewSymbol(exchange, result.Symbol, result.MarketType);
+                : FormatTradingViewSymbol(exchange, result.Symbol);
             var tvInterval = NormalizeTimeframe(result.Timeframe);
 
             var studiesList = new List<object>();
@@ -173,15 +173,10 @@ public sealed class AnalysisChartRenderer : IChartRenderer
         };
     }
 
-    private static string FormatTradingViewSymbol(string exchange, string symbol, MarketType marketType)
+    private static string FormatTradingViewSymbol(string exchange, string symbol)
     {
         var upperExchange = exchange.Trim().ToUpperInvariant();
         var upperSymbol = symbol.Trim().ToUpperInvariant().Replace("/", "").Replace("-", "");
-
-        if (marketType == MarketType.Future)
-        {
-            return $"{upperExchange}:{upperSymbol}.P";
-        }
 
         return $"{upperExchange}:{upperSymbol}";
     }

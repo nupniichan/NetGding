@@ -35,9 +35,7 @@ public sealed class BinanceMarketDataCollector : IExchangeMarketDataCollector
         var startMs = new DateTimeOffset(fromUtc).ToUnixTimeMilliseconds();
         var endMs = new DateTimeOffset(toUtc).ToUnixTimeMilliseconds();
 
-        var baseUrl = MarketType == MarketType.Future
-            ? "https://fapi.binance.com/fapi/v1/klines"
-            : "https://api.binance.com/api/v3/klines";
+        const string baseUrl = "https://api.binance.com/api/v3/klines";
         var url = $"{baseUrl}?symbol={normalized}&interval={interval}&startTime={startMs}&endTime={endMs}&limit=1000";
 
         using var response = await _httpClientFactory.CreateClient(nameof(BinanceMarketDataCollector))
@@ -114,9 +112,7 @@ public sealed class BinanceMarketDataCollector : IExchangeMarketDataCollector
         CancellationToken ct = default)
     {
         var normalized = NormalizeBinanceSymbol(symbol);
-        var baseUrl = MarketType == MarketType.Future
-            ? "https://fapi.binance.com/fapi/v1/depth"
-            : "https://api.binance.com/api/v3/depth";
+        const string baseUrl = "https://api.binance.com/api/v3/depth";
         var url = $"{baseUrl}?symbol={normalized}&limit={limit}";
 
         try

@@ -29,7 +29,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     private static readonly HashSet<string> s_allowedExchanges =
         new(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
     private static readonly HashSet<string> s_allowedMarketTypes =
-        new(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
+        new(StringComparer.OrdinalIgnoreCase) { "spot" };
 
     private readonly IAnalysisCache _store;
     private readonly AnalysisEmbedFormatter _formatter;
@@ -121,7 +121,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         [Option("symbol", "Symbol e.g. BTC")] string symbol,
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe,
         [Option("exchange", "Exchange: binance, okx")] string exchange = "binance",
-        [Option("market_type", "Market type: spot, future")] string marketType = "spot")
+        [Option("market_type", "Market type: spot")] string marketType = "spot")
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
@@ -153,7 +153,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder()
-                    .WithContent("Supported market types: `spot`, `future`.")
+                    .WithContent("Supported market types: `spot`.")
                     .AsEphemeral(true)).ConfigureAwait(false);
             return;
         }

@@ -33,7 +33,7 @@ public sealed class OkxMarketDataCollector : IExchangeMarketDataCollector
         _ = fromUtc;
         _ = toUtc;
 
-        var instId = NormalizeOkxInstrumentId(symbol, MarketType);
+        var instId = NormalizeOkxInstrumentId(symbol);
         var bar = ToOkxBar(timeframe);
         var url = $"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={bar}&limit=300";
 
@@ -92,7 +92,7 @@ public sealed class OkxMarketDataCollector : IExchangeMarketDataCollector
         _ => throw new ArgumentException($"Unsupported timeframe '{timeframe}'.", nameof(timeframe))
     };
 
-    private static string NormalizeOkxInstrumentId(string symbol, MarketType marketType)
+    private static string NormalizeOkxInstrumentId(string symbol)
     {
         var cleaned = symbol.Trim().ToUpperInvariant().Replace("/", "-");
         var baseInstrument = cleaned.Contains('-', StringComparison.Ordinal)
@@ -103,10 +103,7 @@ public sealed class OkxMarketDataCollector : IExchangeMarketDataCollector
                     ? cleaned.Replace("USD", "-USDT", StringComparison.Ordinal)
                     : $"{cleaned}-USDT";
 
-        if (marketType == MarketType.Future && !baseInstrument.EndsWith("-SWAP", StringComparison.Ordinal))
-            return $"{baseInstrument}-SWAP";
-
-        if (marketType == MarketType.Spot && baseInstrument.EndsWith("-SWAP", StringComparison.Ordinal))
+        if (baseInstrument.EndsWith("-SWAP", StringComparison.Ordinal))
             return baseInstrument[..^5];
 
         return baseInstrument;
@@ -124,7 +121,7 @@ public sealed class OkxMarketDataCollector : IExchangeMarketDataCollector
         int limit = 10,
         CancellationToken ct = default)
     {
-        var instId = NormalizeOkxInstrumentId(symbol, MarketType);
+        var instId = NormalizeOkxInstrumentId(symbol);
         var url = $"https://www.okx.com/api/v5/market/books?instId={instId}&sz={limit}";
 
         try

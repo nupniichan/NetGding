@@ -25,38 +25,13 @@ public sealed class RiskCalculator : IRiskCalculator
 
         var atr = GetAtr(indicators);
 
-        return marketType == MarketType.Future
-            ? BuildFuturesRisk(decision, currentPrice, atr)
-            : BuildSpotRisk(currentPrice, atr);
+        return BuildSpotRisk(currentPrice, atr);
     }
 
     private decimal GetAtr(IndicatorSnapshot indicators)
     {
         if (indicators.Atr.Count == 0) return 0m;
         return (decimal)indicators.Atr.Values.Max();
-    }
-
-    private RiskManagement BuildFuturesRisk(TradeDecision decision, decimal entry, decimal atr)
-    {
-        var sl = (decimal)_options.AtrSlMultiplier * atr;
-        var tp = (decimal)_options.AtrTpMultiplier * atr;
-
-        return new RiskManagement
-        {
-            Futures = decision == TradeDecision.Buy
-                ? new FuturesRisk
-                {
-                    Entry = entry,
-                    StopLoss = entry - sl,
-                    TakeProfit = entry + tp
-                }
-                : new FuturesRisk
-                {
-                    Entry = entry,
-                    StopLoss = entry + sl,
-                    TakeProfit = entry - tp
-                }
-        };
     }
 
     private RiskManagement BuildSpotRisk(decimal entry, decimal atr)

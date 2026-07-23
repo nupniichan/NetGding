@@ -120,12 +120,8 @@ public sealed class AnalysisEmbedFormatter
     private static void AppendRiskManagementField(
         DiscordEmbedBuilder builder, RiskManagement risk, MarketType marketType)
     {
-        var value = marketType == MarketType.Future
-            ? $"**Entry:** {FormatDecimal(risk.Futures?.Entry)}\n" +
-              $"**Stop Loss:** {FormatDecimal(risk.Futures?.StopLoss)}\n" +
-              $"**Take Profit:** {FormatDecimal(risk.Futures?.TakeProfit)}"
-            : $"**Buy Price:** {FormatDecimal(risk.Spot?.BuyPrice)}\n" +
-              $"**DCA Levels:** {FormatDcaLevels(risk.Spot?.DcaLevels)}";
+        var value = $"**Buy Price:** {FormatDecimal(risk.Spot?.BuyPrice)}\n" +
+                    $"**DCA Levels:** {FormatDcaLevels(risk.Spot?.DcaLevels)}";
 
         builder.AddField("Risk Management", value);
     }
@@ -150,7 +146,6 @@ public sealed class AnalysisEmbedFormatter
     private static string NormalizeMarketType(MarketType type) => type switch
     {
         MarketType.Spot => "Spot",
-        MarketType.Future => "Future",
         _ => type.ToString()
     };
 

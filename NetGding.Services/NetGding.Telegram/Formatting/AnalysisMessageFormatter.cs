@@ -78,19 +78,9 @@ public sealed class AnalysisMessageFormatter
 
     private static void AppendRiskManagement(StringBuilder sb, RiskManagement risk, MarketType marketType)
     {
-        if (marketType == MarketType.Future)
-        {
-            sb.Append("For Futures:").Append('\n');
-            sb.Append("\\- Entry: ").Append(FormatDecimal(risk.Futures?.Entry)).Append('\n');
-            sb.Append("\\- Stop Loss: ").Append(FormatDecimal(risk.Futures?.StopLoss)).Append('\n');
-            sb.Append("\\- Take Profit: ").Append(FormatDecimal(risk.Futures?.TakeProfit)).Append('\n');
-        }
-        else
-        {
-            sb.Append("For Spot:").Append('\n');
-            sb.Append("\\- Buy Price: ").Append(FormatDecimal(risk.Spot?.BuyPrice)).Append('\n');
-            sb.Append("\\- DCA Levels: ").Append(FormatDcaLevels(risk.Spot?.DcaLevels)).Append('\n');
-        }
+        sb.Append("For Spot:").Append('\n');
+        sb.Append("\\- Buy Price: ").Append(FormatDecimal(risk.Spot?.BuyPrice)).Append('\n');
+        sb.Append("\\- DCA Levels: ").Append(FormatDcaLevels(risk.Spot?.DcaLevels)).Append('\n');
     }
 
     private static string FormatDecimal(decimal? value) =>
@@ -113,7 +103,6 @@ public sealed class AnalysisMessageFormatter
     private static string NormalizeMarketType(MarketType type) => type switch
     {
         MarketType.Spot => "spot",
-        MarketType.Future => "future",
         _ => type.ToString().ToLowerInvariant()
     };
 

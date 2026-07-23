@@ -20,6 +20,6 @@ public sealed class MarketDataCollectorResolver : IMarketDataCollectorResolver
             return collector;
 
         throw new ArgumentException(
-            $"Unsupported exchange/marketType: {exchange}/{marketType}. Allowed exchanges: binance, okx. Allowed marketType: spot, future.");
+            $"Unsupported exchange/marketType: {exchange}/{marketType}. Allowed exchanges: binance, okx. Allowed marketType: spot.");
     }
 }

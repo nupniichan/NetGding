@@ -19,12 +19,6 @@ public static class MarketParsingHelper
             return true;
         }
 
-        if (normalized is "future" or "futures")
-        {
-            marketType = MarketType.Future;
-            return true;
-        }
-
         marketType = default;
         return false;
     }
