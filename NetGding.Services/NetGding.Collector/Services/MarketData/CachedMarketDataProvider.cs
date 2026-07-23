@@ -30,8 +30,6 @@ public sealed class CachedMarketDataProvider : BackgroundService, ICachedMarketD
     // Temporary step cache: requestId → (stepKey → object)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, object>> _tempExecutionCache = new();
 
-    private static readonly string[] s_defaultNewsSymbols = ["BTC", "ETH", "SOL"];
-
     private static readonly JsonSerializerOptions s_json = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -88,76 +86,84 @@ public sealed class CachedMarketDataProvider : BackgroundService, ICachedMarketD
         await FetchFearAndGreedAsync(http, ct).ConfigureAwait(false);
     }
 
-    private async Task FetchNewsAsync(HttpClient http, CancellationToken ct)
+    public async Task<IReadOnlyList<NewsArticle>> GetNewsAsync(string symbol, CancellationToken ct = default)
     {
-        foreach (var symbol in s_defaultNewsSymbols)
+        if (string.IsNullOrWhiteSpace(symbol))
+            return [];
+
+        var normalizedSymbol = symbol.Trim().ToUpperInvariant();
+        if (_newsCache.TryGetValue(normalizedSymbol, out var news))
+            return news;
+
+        // Fetch on-demand from WebAPI if not in cache yet
+        var webApiBaseUrl = _options.CurrentValue.WebApiBaseUrl;
+        if (!string.IsNullOrWhiteSpace(webApiBaseUrl))
         {
             try
             {
-                var response = await http.GetFromJsonAsync<WebApiNewsResponse>(
-                    $"api/news/{Uri.EscapeDataString(symbol)}?limit=10",
-                    s_json, ct).ConfigureAwait(false);
+                var http = _httpClientFactory.CreateClient(nameof(CachedMarketDataProvider));
+                http.BaseAddress = new Uri(webApiBaseUrl.TrimEnd('/') + "/");
+                http.Timeout = TimeSpan.FromSeconds(15);
 
-                if (response?.Items is { Count: > 0 })
+                var articles = await FetchNewsForSymbolAsync(http, normalizedSymbol, ct).ConfigureAwait(false);
+                if (articles is { Count: > 0 })
                 {
-                    var articles = response.Items.Select(item => new NewsArticle(
-                        item.Id,
-                        item.Title,      // Headline
-                        "",              // Author
-                        item.Source,
-                        item.Summary,    // Summary
-                        item.Url,
-                        item.PublishedAtUtc,  // CreatedAtUtc
-                        item.PublishedAtUtc,  // UpdatedAtUtc
-                        [symbol],
-                        ""               // ImageUrl
-                    )).ToList();
-
-                    _newsCache[symbol] = articles;
-                    _logger.LogDebug("[CachedMarketDataProvider] Refreshed news for {Symbol}: {Count} articles", symbol, articles.Count);
+                    _newsCache[normalizedSymbol] = articles;
+                    return articles;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "[CachedMarketDataProvider] Failed to fetch news for {Symbol} from WebAPI", symbol);
+                _logger.LogWarning(ex, "[CachedMarketDataProvider] Failed to fetch on-demand news for {Symbol}", normalizedSymbol);
+            }
+        }
+
+        return [];
+    }
+
+    private async Task FetchNewsAsync(HttpClient http, CancellationToken ct)
+    {
+        var activeSymbols = _newsCache.Keys.ToList();
+        foreach (var symbol in activeSymbols)
+        {
+            var articles = await FetchNewsForSymbolAsync(http, symbol, ct).ConfigureAwait(false);
+            if (articles is { Count: > 0 })
+            {
+                _newsCache[symbol] = articles;
             }
         }
     }
 
-    private async Task FetchFearAndGreedAsync(HttpClient http, CancellationToken ct)
+    private async Task<IReadOnlyList<NewsArticle>?> FetchNewsForSymbolAsync(HttpClient http, string symbol, CancellationToken ct)
     {
         try
         {
-            var response = await http.GetFromJsonAsync<WebApiFearAndGreedResponse>(
-                "api/fear-and-greed", s_json, ct).ConfigureAwait(false);
+            var response = await http.GetFromJsonAsync<WebApiNewsResponse>(
+                $"api/news/{Uri.EscapeDataString(symbol)}?limit=10",
+                s_json, ct).ConfigureAwait(false);
 
-            if (response is not null)
+            if (response?.Items is { Count: > 0 })
             {
-                _latestFearAndGreed = new FearAndGreedResult
-                {
-                    Value = response.Value,
-                    Classification = response.Classification,
-                    TimestampUtc = response.TimestampUtc
-                };
-                _logger.LogDebug("[CachedMarketDataProvider] Refreshed Fear & Greed: {Value} ({Class})",
-                    response.Value, response.Classification);
+                return response.Items.Select(item => new NewsArticle(
+                    item.Id,
+                    item.Title,
+                    "",
+                    item.Source,
+                    item.Summary,
+                    item.Url,
+                    item.PublishedAtUtc,
+                    item.PublishedAtUtc,
+                    [symbol],
+                    ""
+                )).ToList();
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "[CachedMarketDataProvider] Failed to fetch Fear & Greed from WebAPI");
+            _logger.LogWarning(ex, "[CachedMarketDataProvider] Failed to fetch news for {Symbol} from WebAPI", symbol);
         }
-    }
 
-    public Task<IReadOnlyList<NewsArticle>> GetNewsAsync(string symbol, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(symbol))
-            return Task.FromResult<IReadOnlyList<NewsArticle>>([]);
-
-        if (_newsCache.TryGetValue(symbol, out var news))
-            return Task.FromResult(news);
-
-        return Task.FromResult<IReadOnlyList<NewsArticle>>([]);
+        return null;
     }
 
     public Task<FearAndGreedResult?> GetFearAndGreedAsync(CancellationToken ct = default)

@@ -17,27 +17,27 @@ public static class IndicatorEndpoints
     private static async Task<IResult> HandleGetIndicatorsAsync(
         [FromRoute] string symbol,
         [FromQuery] string timeframe,
-        [FromQuery] string exchange,
-        [FromQuery] string marketType,
+        [FromQuery] string? exchange,
+        [FromQuery] string? marketType,
         [FromQuery] bool detail,
         ICollectorGateway collectorGateway,
         IAnalysisResultStore analysisResultStore,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(symbol) ||
-            string.IsNullOrWhiteSpace(timeframe) ||
-            string.IsNullOrWhiteSpace(exchange) ||
-            string.IsNullOrWhiteSpace(marketType))
+        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(timeframe))
         {
-            return Results.BadRequest("Symbol, timeframe, exchange, and marketType are required.");
+            return Results.BadRequest("Symbol and timeframe are required.");
         }
+
+        var ex = string.IsNullOrWhiteSpace(exchange) ? "binance" : exchange.Trim().ToLowerInvariant();
+        var mt = string.IsNullOrWhiteSpace(marketType) ? "spot" : marketType.Trim().ToLowerInvariant();
 
         var decodedSymbol = Uri.UnescapeDataString(symbol).Trim();
         var normalizedRequest = new OnDemandRequest(
             decodedSymbol,
             timeframe.Trim().ToLowerInvariant(),
-            exchange.Trim().ToLowerInvariant(),
-            marketType.Trim().ToLowerInvariant());
+            ex,
+            mt);
         var notification = await collectorGateway.AnalyzeOnDemandAsync(normalizedRequest, ct).ConfigureAwait(false);
         if (notification is null)
             return Results.StatusCode(502);

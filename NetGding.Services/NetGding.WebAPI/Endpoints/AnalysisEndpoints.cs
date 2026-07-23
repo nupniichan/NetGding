@@ -34,18 +34,19 @@ public static class AnalysisEndpoints
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Symbol) ||
-            string.IsNullOrWhiteSpace(request.Timeframe) ||
-            string.IsNullOrWhiteSpace(request.Exchange) ||
-            string.IsNullOrWhiteSpace(request.MarketType))
+            string.IsNullOrWhiteSpace(request.Timeframe))
         {
-            return Results.BadRequest("Symbol, Timeframe, Exchange, and MarketType are required.");
+            return Results.BadRequest("Symbol and Timeframe are required.");
         }
+
+        var exchange = string.IsNullOrWhiteSpace(request.Exchange) ? "binance" : request.Exchange.Trim().ToLowerInvariant();
+        var marketType = string.IsNullOrWhiteSpace(request.MarketType) ? "spot" : request.MarketType.Trim().ToLowerInvariant();
 
         var normalizedRequest = new OnDemandRequest(
             request.Symbol.Trim(),
             request.Timeframe.Trim().ToLowerInvariant(),
-            request.Exchange.Trim().ToLowerInvariant(),
-            request.MarketType.Trim().ToLowerInvariant(),
+            exchange,
+            marketType,
             request.ChartSymbol?.Trim(),
             request.ChartOnly);
         try
@@ -135,17 +136,20 @@ public static class AnalysisEndpoints
 
     private static async Task<IResult> HandleGetDomAsync(
         [FromQuery] string symbol,
-        [FromQuery] string exchange,
-        [FromQuery] string marketType,
+        [FromQuery] string? exchange,
+        [FromQuery] string? marketType,
         [FromQuery] int limit,
         ICollectorGateway collectorGateway,
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange) || string.IsNullOrWhiteSpace(marketType))
+        if (string.IsNullOrWhiteSpace(symbol))
         {
-            return Results.BadRequest("Symbol, exchange, and marketType are required.");
+            return Results.BadRequest("Symbol is required.");
         }
+
+        var ex = string.IsNullOrWhiteSpace(exchange) ? "binance" : exchange.Trim().ToLowerInvariant();
+        var mt = string.IsNullOrWhiteSpace(marketType) ? "spot" : marketType.Trim().ToLowerInvariant();
 
         if (limit <= 0) limit = 10;
 
@@ -153,8 +157,8 @@ public static class AnalysisEndpoints
         {
             var depth = await collectorGateway.GetDepthAsync(
                 symbol.Trim(),
-                exchange.Trim().ToLowerInvariant(),
-                marketType.Trim().ToLowerInvariant(),
+                ex,
+                mt,
                 limit,
                 ct).ConfigureAwait(false);
 

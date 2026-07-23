@@ -212,7 +212,7 @@ public sealed class BotPollingService : BackgroundService
         {
             await _notifier.SendTextAsync(
                 chatId,
-                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe> [<exchange>] [<market_type>]  e.g. /analyze BTC/USD 4h (defaults: binance, spot)"),
+                AnalysisMessageFormatter.Escape("Usage: /analyze <symbol> <timeframe> [<exchange>]  e.g. /analyze BTC 4h (default exchange: binance)"),
                 ct).ConfigureAwait(false);
             return;
         }
@@ -220,7 +220,7 @@ public sealed class BotPollingService : BackgroundService
         var symbol = parts[1].Trim();
         var timeframe = parts[2].Trim().ToLowerInvariant();
         var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
-        var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
+        const string marketType = "spot";
 
         if (!s_allowedTimeframes.Contains(timeframe))
         {
@@ -240,18 +240,9 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
-        if (!s_allowedMarketTypes.Contains(marketType))
-        {
-            await _notifier.SendTextAsync(
-                chatId,
-                AnalysisMessageFormatter.Escape("Supported market types: spot, future."),
-                ct).ConfigureAwait(false);
-            return;
-        }
-
         await _notifier.SendTextAsync(
             chatId,
-            AnalysisMessageFormatter.Escape($"Analyzing {symbol} ({timeframe}, {exchange}, {marketType})... please wait."),
+            AnalysisMessageFormatter.Escape($"Analyzing {symbol} ({timeframe}, {exchange})... please wait."),
             ct).ConfigureAwait(false);
 
         try
@@ -401,7 +392,7 @@ public sealed class BotPollingService : BackgroundService
         var symbol = parts.Length > 1 ? parts[1].Trim() : "BTC";
         var timeframe = parts.Length > 2 ? parts[2].Trim().ToLowerInvariant() : "4h";
         var exchange = parts.Length > 3 ? parts[3].Trim().ToLowerInvariant() : "binance";
-        var marketType = parts.Length > 4 ? parts[4].Trim().ToLowerInvariant() : "spot";
+        const string marketType = "spot";
 
         if (!s_allowedTimeframes.Contains(timeframe))
         {
@@ -415,15 +406,9 @@ public sealed class BotPollingService : BackgroundService
             return;
         }
 
-        if (!s_allowedMarketTypes.Contains(marketType))
-        {
-            await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape("Supported market types: spot, future."), ct).ConfigureAwait(false);
-            return;
-        }
-
         var normalizedSymbol = symbol.Contains('/', StringComparison.Ordinal) ? symbol : $"{symbol.ToUpperInvariant()}/USD";
 
-        await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape($"Fetching chart for {normalizedSymbol} ({timeframe}, {exchange}, {marketType})... please wait."), ct).ConfigureAwait(false);
+        await _notifier.SendTextAsync(chatId, AnalysisMessageFormatter.Escape($"Fetching chart for {normalizedSymbol} ({timeframe}, {exchange})... please wait."), ct).ConfigureAwait(false);
 
         try
         {

@@ -61,14 +61,15 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "**Available commands:**\n\n" +
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
-                "• `/analyze <symbol> <timeframe> [exchange] [market_type]` — run live analysis (defaults: binance, spot)\n" +
-                "• `/chart [symbol] [timeframe] [exchange] [market_type]` — get live chart (defaults: BTC, 4h, binance, spot)\n" +
+                "• `/help` — show available commands\n" +
+                "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
+                "• `/analyze <symbol> <timeframe> [exchange]` — run live analysis (default exchange: binance)\n" +
+                "• `/chart [symbol] [timeframe] [exchange]` — get live chart (defaults: BTC, 4h, binance)\n" +
                 "• `/news [symbol] [limit]` — get recent news (defaults: BTC, 5)\n" +
                 "• `/dom [timeframe]` — check BTC dominance chart and DOM (default: 4h)\n" +
                 "• `/fagi` — get the current Crypto Fear and Greed Index\n\n" +
                 "**Supported timeframes:** `15m`, `1h`, `4h`, `1d`, `1w`, `1m`\n\n" +
-                "**Supported exchanges:** `binance`, `okx`\n" +
-                "**Supported market types:** `spot`, `future`\n\n" +
+                "**Supported exchanges:** `binance`, `okx`\n\n" +
                 "**Indicator legend (shown on chart and legend):**\n" +
                 "• EMAx — Exponential Moving Average\n" +
                 "• BB — Bollinger Bands\n" +
@@ -77,7 +78,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 "• Entry/SL/TP/Buy — Risk management price levels\n\n" +
                 "**Examples:**\n" +
                 "  `/analyze BTC 4h`\n" +
-                "  `/analyze BTC 4h okx future`\n" +
+                "  `/analyze BTC 4h okx`\n" +
                 "  `/chart BTC 4h`\n" +
                 "  `/dom 4h`\n" +
                 "  `/news BTC 5`\n" +
@@ -120,13 +121,12 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         InteractionContext ctx,
         [Option("symbol", "Symbol e.g. BTC")] string symbol,
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe,
-        [Option("exchange", "Exchange: binance, okx")] string exchange = "binance",
-        [Option("market_type", "Market type: spot")] string marketType = "spot")
+        [Option("exchange", "Exchange: binance, okx")] string exchange = "binance")
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
         exchange = exchange.Trim().ToLowerInvariant();
-        marketType = marketType.Trim().ToLowerInvariant();
+        const string marketType = "spot";
 
         if (!s_allowedTimeframes.Contains(timeframe))
         {
@@ -144,16 +144,6 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder()
                     .WithContent("Supported exchanges: `binance`, `okx`.")
-                    .AsEphemeral(true)).ConfigureAwait(false);
-            return;
-        }
-
-        if (!s_allowedMarketTypes.Contains(marketType))
-        {
-            await ctx.CreateResponseAsync(
-                InteractionResponseType.ChannelMessageWithSource,
-                new DiscordInteractionResponseBuilder()
-                    .WithContent("Supported market types: `spot`.")
                     .AsEphemeral(true)).ConfigureAwait(false);
             return;
         }
@@ -311,13 +301,12 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         InteractionContext ctx,
         [Option("symbol", "Symbol e.g. BTC (default: BTC)")] string symbol = "BTC",
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m (default: 4h)")] string timeframe = "4h",
-        [Option("exchange", "Exchange: binance, okx (default: binance)")] string exchange = "binance",
-        [Option("market_type", "Market type: spot, future (default: spot)")] string marketType = "spot")
+        [Option("exchange", "Exchange: binance, okx (default: binance)")] string exchange = "binance")
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
         exchange = exchange.Trim().ToLowerInvariant();
-        marketType = marketType.Trim().ToLowerInvariant();
+        const string marketType = "spot";
 
         if (!s_allowedTimeframes.Contains(timeframe))
         {
@@ -335,16 +324,6 @@ public sealed class AnalysisCommands : ApplicationCommandModule
                 InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder()
                     .WithContent("Supported exchanges: `binance`, `okx`.")
-                    .AsEphemeral(true)).ConfigureAwait(false);
-            return;
-        }
-
-        if (!s_allowedMarketTypes.Contains(marketType))
-        {
-            await ctx.CreateResponseAsync(
-                InteractionResponseType.ChannelMessageWithSource,
-                new DiscordInteractionResponseBuilder()
-                    .WithContent("Supported market types: `spot`, `future`.")
                     .AsEphemeral(true)).ConfigureAwait(false);
             return;
         }
