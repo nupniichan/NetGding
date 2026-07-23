@@ -148,7 +148,7 @@ public static class AnalysisEndpoints
             return Results.BadRequest("Symbol is required.");
         }
 
-        var ex = string.IsNullOrWhiteSpace(exchange) ? "binance" : exchange.Trim().ToLowerInvariant();
+        var targetExchange = string.IsNullOrWhiteSpace(exchange) ? "binance" : exchange.Trim().ToLowerInvariant();
         var mt = string.IsNullOrWhiteSpace(marketType) ? "spot" : marketType.Trim().ToLowerInvariant();
 
         if (limit <= 0) limit = 10;
@@ -157,7 +157,7 @@ public static class AnalysisEndpoints
         {
             var depth = await collectorGateway.GetDepthAsync(
                 symbol.Trim(),
-                ex,
+                targetExchange,
                 mt,
                 limit,
                 ct).ConfigureAwait(false);

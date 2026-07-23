@@ -166,6 +166,31 @@ public sealed class CachedMarketDataProvider : BackgroundService, ICachedMarketD
         return null;
     }
 
+    private async Task FetchFearAndGreedAsync(HttpClient http, CancellationToken ct)
+    {
+        try
+        {
+            var response = await http.GetFromJsonAsync<WebApiFearAndGreedResponse>(
+                "api/fear-and-greed", s_json, ct).ConfigureAwait(false);
+
+            if (response is not null)
+            {
+                _latestFearAndGreed = new FearAndGreedResult
+                {
+                    Value = response.Value,
+                    Classification = response.Classification,
+                    TimestampUtc = response.TimestampUtc
+                };
+                _logger.LogDebug("[CachedMarketDataProvider] Refreshed Fear & Greed: {Value} ({Class})",
+                    response.Value, response.Classification);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[CachedMarketDataProvider] Failed to fetch Fear & Greed from WebAPI");
+        }
+    }
+
     public Task<FearAndGreedResult?> GetFearAndGreedAsync(CancellationToken ct = default)
         => Task.FromResult(_latestFearAndGreed);
 
