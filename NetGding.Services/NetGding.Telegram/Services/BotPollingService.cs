@@ -8,9 +8,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.MarketData;
 using NetGding.Telegram.Formatting;
+
+using NetGding.Contracts.Services;
 
 namespace NetGding.Telegram.Services;
 
@@ -20,7 +23,7 @@ public sealed class BotPollingService : BackgroundService
 
     private readonly IHttpClientFactory _httpFactory;
     private readonly IOptionsMonitor<TelegramOptions> _options;
-    private readonly IAnalysisStore _store;
+    private readonly IAnalysisCache _store;
     private readonly ITelegramNotifier _notifier;
     private readonly AnalysisMessageFormatter _formatter;
     private readonly ILogger<BotPollingService> _logger;
@@ -42,7 +45,7 @@ public sealed class BotPollingService : BackgroundService
     public BotPollingService(
         IHttpClientFactory httpFactory,
         IOptionsMonitor<TelegramOptions> options,
-        IAnalysisStore store,
+        IAnalysisCache store,
         ITelegramNotifier notifier,
         AnalysisMessageFormatter formatter,
         ILogger<BotPollingService> logger)
@@ -638,7 +641,7 @@ public sealed class BotPollingService : BackgroundService
 
     private async Task SendFormattedErrorAsync(string chatId, string title, Exception ex, CancellationToken ct)
     {
-        var code = "ERR_UNKNOWN";
+        var code = ErrorCodes.Unknown;
         var location = "BotPollingService";
         var message = ex.Message;
 

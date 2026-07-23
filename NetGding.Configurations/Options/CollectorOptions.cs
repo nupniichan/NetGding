@@ -4,12 +4,12 @@ public sealed class CollectorOptions
 {
     public const string SectionName = "Collector";
 
-    public int LookbackDays { get; set; } = 30;
+    public int LookbackDays { get; set; }
     public string OutputDirectory { get; set; } = "";
     public bool WebApiPublishEnabled { get; set; }
-    public string WebApiBaseUrl { get; set; } = "http://localhost:5001";
-    public int WebApiHttpTimeoutSeconds { get; set; } = 10;
-    public int PublishMaxRetries { get; set; } = 3;
-    public bool ChartEnabled { get; set; } = true;
+    public string WebApiBaseUrl { get; set; } = "";
+    public int WebApiHttpTimeoutSeconds { get; set; }
+    public int PublishMaxRetries { get; set; }
+    public bool ChartEnabled { get; set; }
     public string ChartImgApiKey { get; set; } = "";
 }

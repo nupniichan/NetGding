@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NetGding.Collector.Services;
 using NetGding.Collector.Services.MarketData;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.MarketData;
 
@@ -58,12 +59,21 @@ public static class AnalysisEndpoints
             var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(ex.ErrorCode, ex.Location, ex.Message);
             return Results.Json(errorResponse, statusCode: 500);
         }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "On-demand analysis HttpRequestException for {Symbol}: {Message}", request.Symbol, ex.Message);
+            var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
+                ErrorCodes.HttpRequestFailed,
+                "Collector.OnDemandAsync",
+                ex.Message);
+            return Results.Json(errorResponse, statusCode: 500);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "On-demand analysis failed for {Symbol} ({Timeframe}, {Exchange}, {MarketType})",
                 request.Symbol, request.Timeframe, request.Exchange, request.MarketType);
             var errorResponse = new NetGding.Contracts.Models.Analysis.ErrorResponse(
-                "ERR_INTERNAL",
+                ErrorCodes.InternalError,
                 "Collector.OnDemandAsync",
                 ex.Message);
             return Results.Json(errorResponse, statusCode: 500);

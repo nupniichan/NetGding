@@ -12,9 +12,18 @@ await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 
+var sharedJsonPath = Path.Combine(AppContext.BaseDirectory, "appsettings.Shared.json");
+if (File.Exists(sharedJsonPath))
+{
+    builder.Configuration.AddJsonFile(sharedJsonPath, optional: true, reloadOnChange: true);
+}
+builder.Configuration.AddEnvironmentVariables();
+
 builder.Services
     .AddOptions<CollectorOptions>()
     .BindConfiguration(CollectorOptions.SectionName);
+
+builder.Services.AddRedisMessaging(builder.Configuration);
 
 builder.Services
     .AddOptions<LlmOptions>()
@@ -48,20 +57,16 @@ builder.Services.AddSingleton<IExchangeMarketDataCollector>(sp =>
         NetGding.Contracts.Models.MarketData.MarketType.Future));
 builder.Services.AddSingleton<IMarketDataCollectorResolver, MarketDataCollectorResolver>();
 
-builder.Services.AddHttpClient(nameof(WebApiAnalysisPublisher), (sp, client) =>
-{
-    var o = sp.GetRequiredService<IOptions<CollectorOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.WebApiHttpTimeoutSeconds);
-    if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        client.BaseAddress = new Uri(o.WebApiBaseUrl);
-});
-builder.Services.AddSingleton<IAnalysisPublisher, WebApiAnalysisPublisher>();
+// WebApiAnalysisPublisher removed: analysis results now returned directly in HTTP response
+// (no longer needs to publish to Redis since we use direct HTTP call from WebAPI)
 
 builder.Services.AddHttpClient(nameof(LlmAnalyzer), (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
     if (!string.IsNullOrWhiteSpace(o.BaseUrl))
         client.BaseAddress = new Uri(o.BaseUrl);
+    if (o.HttpTimeoutSeconds > 0)
+        client.Timeout = TimeSpan.FromSeconds(o.HttpTimeoutSeconds);
 });
 builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 {
@@ -74,13 +79,26 @@ builder.Services.AddSingleton<ILlmAnalyzer>(sp =>
 builder.Services.AddSingleton<ISignalEngine, SignalEngine>();
 builder.Services.AddSingleton<IRiskCalculator, RiskCalculator>();
 
-builder.Services.AddHttpClient(nameof(AnalysisChartRenderer));
+builder.Services.AddHttpClient(nameof(AnalysisChartRenderer), (sp, client) =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "NetGding/1.0");
+});
 builder.Services.AddSingleton<IChartRenderer, AnalysisChartRenderer>();
 
+// CachedMarketDataProvider: polls WebAPI HTTP endpoints for News/FnG every 15 min
+// (replaces Redis stream subscription, breaking the circular dependency)
+builder.Services.AddHttpClient(nameof(CachedMarketDataProvider));
+builder.Services.AddSingleton<CachedMarketDataProvider>();
+builder.Services.AddSingleton<ICachedMarketDataProvider>(sp => sp.GetRequiredService<CachedMarketDataProvider>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CachedMarketDataProvider>());
+
 builder.Services.AddSingleton<IOnDemandAnalyzer, OnDemandAnalyzer>();
+// OnDemandAnalysisWorker removed: analysis is now triggered via HTTP (WebAPI calls POST /api/analysis/on-demand directly)
 
 var app = builder.Build();
 
 app.MapAnalysisEndpoints();
+app.MapMinimalHealthEndpoint();
 
 await app.RunAsync().ConfigureAwait(false);

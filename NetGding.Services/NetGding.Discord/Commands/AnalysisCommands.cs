@@ -12,6 +12,8 @@ using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.MarketData;
 using NetGding.Discord.Formatting;
 
+using NetGding.Contracts.Services;
+
 namespace NetGding.Discord.Commands;
 
 public sealed class AnalysisCommands : ApplicationCommandModule
@@ -29,14 +31,14 @@ public sealed class AnalysisCommands : ApplicationCommandModule
     private static readonly HashSet<string> s_allowedMarketTypes =
         new(StringComparer.OrdinalIgnoreCase) { "spot", "future" };
 
-    private readonly IAnalysisStore _store;
+    private readonly IAnalysisCache _store;
     private readonly AnalysisEmbedFormatter _formatter;
     private readonly IHttpClientFactory _httpFactory;
     private readonly IOptionsMonitor<DiscordOptions> _options;
     private readonly ILogger<AnalysisCommands> _logger;
 
     public AnalysisCommands(
-        IAnalysisStore store,
+        IAnalysisCache store,
         AnalysisEmbedFormatter formatter,
         IHttpClientFactory httpFactory,
         IOptionsMonitor<DiscordOptions> options,

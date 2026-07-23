@@ -5,42 +5,35 @@ using NetGding.Configurations.Options;
 using NetGding.WebApi.Endpoints;
 using NetGding.WebApi.Persistence;
 using NetGding.WebApi.Services;
+using NetGding.WebApi.Workers;
 
 await new EnvFileLoader().ReadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 
+var sharedJsonPath = Path.Combine(AppContext.BaseDirectory, "appsettings.Shared.json");
+if (File.Exists(sharedJsonPath))
+{
+    builder.Configuration.AddJsonFile(sharedJsonPath, optional: true, reloadOnChange: true);
+}
+builder.Configuration.AddEnvironmentVariables();
+
 builder.Services
     .AddOptions<WebApiOptions>()
     .BindConfiguration(WebApiOptions.SectionName);
 
-builder.Services.AddHttpClient(nameof(TelegramForwarder), (sp, client) =>
-{
-    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
-});
+builder.Services.AddRedisMessaging(builder.Configuration);
 
-builder.Services.AddHttpClient(nameof(DiscordForwarder), (sp, client) =>
-{
-    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
-});
-
-builder.Services.AddHttpClient(nameof(CollectorGateway), (sp, client) =>
-{
-    var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.CollectorTimeoutSeconds);
-});
+// CollectorHttpClient: direct HTTP to Collector service (no Redis RPC overhead)
+builder.Services.AddHttpClient(nameof(CollectorHttpClient));
+builder.Services.AddSingleton<ICollectorGateway, CollectorHttpClient>();
 
 builder.Services.AddHttpClient("HealthProbe", (sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
-    client.Timeout = TimeSpan.FromSeconds(o.HealthTimeoutSeconds);
+    if (o.HealthTimeoutSeconds > 0)
+        client.Timeout = TimeSpan.FromSeconds(o.HealthTimeoutSeconds);
 });
-
-builder.Services.AddSingleton<ITelegramForwarder, TelegramForwarder>();
-builder.Services.AddSingleton<IDiscordForwarder, DiscordForwarder>();
-builder.Services.AddSingleton<ICollectorGateway, CollectorGateway>();
 builder.Services.AddDbContext<TradingDbContext>((sp, options) =>
 {
     var o = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
@@ -70,8 +63,14 @@ builder.Services.AddDbContext<TradingDbContext>((sp, options) =>
 });
 builder.Services.AddScoped<IAnalysisResultStore, SqliteAnalysisResultStore>();
 builder.Services.AddSingleton<ISymbolMetadataProvider, SymbolMetadataProvider>();
-builder.Services.AddHttpClient<INewsProvider, AlphaVantageNewsProvider>();
+builder.Services.AddHttpClient<AlphaVantageNewsProvider>();
+builder.Services.AddHttpClient<GoogleNewsRssNewsProvider>();
+builder.Services.AddSingleton<INewsProvider, CompositeNewsProvider>();
 builder.Services.AddHttpClient<IFearAndGreedProvider, CoinMarketCapFearAndGreedProvider>();
+
+// Subscribe to Redis stream:analysis:completed → persist to SQLite
+builder.Services.AddHostedService<AnalysisCompletedSubscriberWorker>();
+// NOTE: MarketDataEventPublisherWorker removed — News/FnG fetching moved to Collector (no circular dependency)
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

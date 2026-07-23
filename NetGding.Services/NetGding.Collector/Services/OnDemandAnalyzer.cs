@@ -7,6 +7,7 @@ using NetGding.Analyzer.Signal;
 using NetGding.ChartRenderer;
 using NetGding.Configurations.Options;
 using NetGding.Collector.Services.MarketData;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
@@ -25,7 +26,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
     private readonly ISignalEngine _signalEngine;
     private readonly IRiskCalculator _riskCalculator;
     private readonly IChartRenderer _chartRenderer;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ICachedMarketDataProvider _cachedMarketData;
     private readonly ILogger<OnDemandAnalyzer> _logger;
 
     public OnDemandAnalyzer(
@@ -35,7 +36,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         ISignalEngine signalEngine,
         IRiskCalculator riskCalculator,
         IChartRenderer chartRenderer,
-        IHttpClientFactory httpClientFactory,
+        ICachedMarketDataProvider cachedMarketData,
         ILogger<OnDemandAnalyzer> logger)
     {
         _options = options;
@@ -44,7 +45,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         _signalEngine = signalEngine;
         _riskCalculator = riskCalculator;
         _chartRenderer = chartRenderer;
-        _httpClientFactory = httpClientFactory;
+        _cachedMarketData = cachedMarketData;
         _logger = logger;
     }
 
@@ -121,7 +122,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         if (collector is null)
         {
             throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_COLLECTOR_NOT_FOUND",
+                ErrorCodes.CollectorNotFound,
                 "OnDemandAnalyzer.FetchMarketBarsAsync",
                 $"No collector resolved for exchange '{exchange}' and market type '{marketType}'.");
         }
@@ -130,7 +131,7 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         if (bars.Count == 0)
         {
             throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_NO_MARKET_DATA",
+                ErrorCodes.NoMarketData,
                 "OnDemandAnalyzer.FetchMarketBarsAsync",
                 $"No market data (OHLCV) found for {symbol} on {exchange} [{timeframe}].");
         }
@@ -146,10 +147,10 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
         int? fngIndex = null;
         string? fngClass = null;
 
-        var news = await FetchNewsFromWebApiAsync(symbol, ct).ConfigureAwait(false);
+        var news = await _cachedMarketData.GetNewsAsync(symbol, ct).ConfigureAwait(false);
         if (market == AssetMarket.Crypto)
         {
-            var fng = await FetchFearAndGreedFromWebApiAsync(ct).ConfigureAwait(false);
+            var fng = await _cachedMarketData.GetFearAndGreedAsync(ct).ConfigureAwait(false);
             if (fng != null)
             {
                 fngIndex = fng.Value;
@@ -183,24 +184,20 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
             {
                 notification.ChartImageBase64 = Convert.ToBase64String(chartBytes);
             }
-            else if (isChartRequest)
+            else
             {
                 throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    "ERR_CHART_RENDER_FAILED",
+                    ErrorCodes.ChartRenderFailed,
                     "OnDemandAnalyzer.RenderChartIfEnabledAsync",
                     "Chart rendering completed but returned empty bytes.");
             }
         }
         catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
-            if (isChartRequest)
-            {
-                throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    "ERR_CHART_RENDER_FAILED",
-                    "OnDemandAnalyzer.RenderChartIfEnabledAsync",
-                    $"Chart rendering failed: {ex.Message}", ex);
-            }
-            _logger.LogWarning(ex, "OnDemandAnalyzer: chart rendering failed for {Symbol}, skipping chart", notification.Result.Symbol);
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                ErrorCodes.ChartRenderFailed,
+                "OnDemandAnalyzer.RenderChartIfEnabledAsync",
+                $"Chart rendering failed: {ex.Message}", ex);
         }
     }
 
@@ -331,70 +328,4 @@ public sealed class OnDemandAnalyzer : IOnDemandAnalyzer
 
     private static AssetMarket ResolveMarket(string symbol) =>
         symbol.Contains('/') ? AssetMarket.Crypto : AssetMarket.Stock;
-
-    private async Task<FearAndGreedResult?> FetchFearAndGreedFromWebApiAsync(CancellationToken ct)
-    {
-        var o = _options.CurrentValue;
-        if (string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        {
-            _logger.LogWarning("OnDemandAnalyzer: WebApiBaseUrl is not configured, returning null for Fear and Greed Index.");
-            return null;
-        }
-
-        var client = _httpClientFactory.CreateClient();
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/fear-and-greed";
-
-        try
-        {
-            var response = await client.GetFromJsonAsync<FearAndGreedResult>(url, ct).ConfigureAwait(false);
-            return response;
-        }
-        catch (Exception ex)
-        {
-            throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_FEAR_AND_GREED_FETCH_FAILED",
-                "OnDemandAnalyzer.FetchFearAndGreedFromWebApiAsync",
-                $"Failed to fetch Fear & Greed Index from WebAPI: {ex.Message}", ex);
-        }
-    }
-
-    private async Task<IReadOnlyList<NetGding.Contracts.Models.News.NewsArticle>> FetchNewsFromWebApiAsync(string symbol, CancellationToken ct)
-    {
-        var o = _options.CurrentValue;
-        if (string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        {
-            _logger.LogWarning("OnDemandAnalyzer: WebApiBaseUrl is not configured, returning empty news.");
-            return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
-        }
-
-        var client = _httpClientFactory.CreateClient();
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit=10";
-
-        try
-        {
-            var response = await client.GetFromJsonAsync<WebApiNewsResponse>(url, ct).ConfigureAwait(false);
-            if (response?.Items is null || response.Items.Count == 0)
-                return Array.Empty<NetGding.Contracts.Models.News.NewsArticle>();
-
-            return response.Items.Select(dto => new NetGding.Contracts.Models.News.NewsArticle(
-                dto.Id,
-                dto.Title,
-                "", // Author
-                dto.Source,
-                dto.Summary,
-                dto.Url,
-                dto.PublishedAtUtc, // CreatedAtUtc
-                dto.PublishedAtUtc, // UpdatedAtUtc
-                new[] { dto.Symbol }, // Symbols
-                "" // ImageUrl
-            )).ToArray();
-        }
-        catch (Exception ex)
-        {
-            throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_NEWS_FETCH_FAILED",
-                "OnDemandAnalyzer.FetchNewsFromWebApiAsync",
-                $"Failed to fetch news from WebAPI for {symbol}: {ex.Message}", ex);
-        }
-    }
 }

@@ -4,23 +4,23 @@ public sealed class WebApiOptions
 {
     public const string SectionName = "WebApi";
 
-    public string TelegramServiceUrl { get; set; } = "http://localhost:5002";
-    public string DiscordServiceUrl { get; set; } = "http://localhost:5003";
-    public string CollectorServiceUrl { get; set; } = "http://localhost:5000";
+    public string TelegramServiceUrl { get; set; } = "";
+    public string DiscordServiceUrl { get; set; } = "";
+    public string CollectorServiceUrl { get; set; } = "";
     public string AnalyzerServiceUrl { get; set; } = "";
     public string NewsServiceUrl { get; set; } = "";
-    public int TimeoutSeconds { get; set; } = 20;
-    public int CollectorTimeoutSeconds { get; set; } = 30;
-    public int HealthTimeoutSeconds { get; set; } = 10;
-    public string HealthProbePath { get; set; } = "/health";
-    public int AnalysisHistoryLimit { get; set; } = 500;
-    public int MaxRetries { get; set; } = 3;
-    public int NewsDefaultLimit { get; set; } = 20;
-    public int NewsMaxLimit { get; set; } = 200;
+    public int TimeoutSeconds { get; set; }
+    public int CollectorTimeoutSeconds { get; set; }
+    public int HealthTimeoutSeconds { get; set; }
+    public string HealthProbePath { get; set; } = "";
+    public int AnalysisHistoryLimit { get; set; }
+    public int MaxRetries { get; set; }
+    public int NewsDefaultLimit { get; set; }
+    public int NewsMaxLimit { get; set; }
     public string[] Symbols { get; set; } = [];
     public string[] BarTimeFrames { get; set; } = [];
     public string OutputDirectory { get; set; } = "";
-    public string ConnectionString { get; set; } = "Data Source=db/trading.db";
+    public string ConnectionString { get; set; } = "";
     public string AlphaVantageApiKey { get; set; } = "";
     public string CoinMarketCapApiKey { get; set; } = "";
 }
