@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
@@ -168,7 +169,6 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
 
     private async Task<string> CallChatCompletionAsync(string prompt, CancellationToken ct)
     {
-        var maxAttempts = _options.MaxAttempts;
         var url = $"{_options.BaseUrl.TrimEnd('/')}/chat/completions";
 
         var payload = new
@@ -184,43 +184,92 @@ public sealed class LlmAnalyzer : ILlmAnalyzer
         };
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, url)
-            {
-                Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
-            };
+            Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+        };
 
-            if (!string.IsNullOrWhiteSpace(_options.ApiKey))
-                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
+        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_options.ApiKey}");
 
-            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
 
-            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxAttempts)
-            {
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? TimeSpan.FromSeconds(Math.Pow(2, attempt) * 10);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            _logger.LogError(
+                "LLM: request failed with status code {StatusCode} ({Reason}) for model '{ModelName}': {Body}",
+                (int)response.StatusCode, response.ReasonPhrase, _options.ModelName, errorBody);
 
-                _logger.LogWarning(
-                    "LLM: rate limited (429), waiting {Delay:g} before retry (attempt {Attempt}/{Max})",
-                    retryAfter, attempt, maxAttempts);
-
-                await Task.Delay(retryAfter, ct).ConfigureAwait(false);
-                continue;
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(body);
-            return doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                ErrorCodes.LlmRequestFailed,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API request failed ({(int)response.StatusCode} {response.ReasonPhrase}) for model '{_options.ModelName}': {errorBody}");
         }
 
-        throw new HttpRequestException("LLM: max retry attempts exceeded.");
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            _logger.LogError("LLM: API returned an empty response body for model '{ModelName}'", _options.ModelName);
+            throw new NetGdingException(
+                ErrorCodes.LlmResponseInvalid,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API returned an empty response body for model '{_options.ModelName}'.");
+        }
+
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        if (root.TryGetProperty("error", out var errorElement))
+        {
+            var errMessage = errorElement.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : "Unknown LLM error message";
+            var errCode = errorElement.TryGetProperty("code", out var codeEl) ? codeEl.ToString() : "N/A";
+            
+            _logger.LogError(
+                "LLM: API returned an error payload for model '{ModelName}'. Code: {ErrCode}, Message: {ErrMessage}, Response body: {Body}",
+                _options.ModelName, errCode, errMessage, body);
+                
+            throw new NetGdingException(
+                ErrorCodes.LlmRequestFailed,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API returned an error payload for model '{_options.ModelName}': {errMessage} (Code: {errCode})");
+        }
+
+        if (!root.TryGetProperty("choices", out var choicesElement) || choicesElement.ValueKind != JsonValueKind.Array || choicesElement.GetArrayLength() == 0)
+        {
+            _logger.LogError(
+                "LLM: API response is missing choices array or choices array is empty for model '{ModelName}'. Response body: {Body}",
+                _options.ModelName, body);
+            throw new NetGdingException(
+                ErrorCodes.LlmResponseInvalid,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API response structure is invalid for model '{_options.ModelName}': choices array is missing or empty.");
+        }
+
+        var firstChoice = choicesElement[0];
+        if (!firstChoice.TryGetProperty("message", out var messageElement))
+        {
+            _logger.LogError(
+                "LLM: API response first choice is missing 'message' property for model '{ModelName}'. Response body: {Body}",
+                _options.ModelName, body);
+            throw new NetGdingException(
+                ErrorCodes.LlmResponseInvalid,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API response structure is invalid for model '{_options.ModelName}': first choice is missing 'message' property.");
+        }
+
+        if (!messageElement.TryGetProperty("content", out var contentElement))
+        {
+            _logger.LogError(
+                "LLM: API response message is missing 'content' property for model '{ModelName}'. Response body: {Body}",
+                _options.ModelName, body);
+            throw new NetGdingException(
+                ErrorCodes.LlmResponseInvalid,
+                "LlmAnalyzer.CallChatCompletionAsync",
+                $"LLM API response structure is invalid for model '{_options.ModelName}': message is missing 'content' property.");
+        }
+
+        return contentElement.GetString() ?? "";
     }
 
     private LlmSignal ParseResponse(string raw, AnalysisRequest request)

@@ -9,9 +9,11 @@ RUN dotnet restore "NetGding.Services/NetGding.WebAPI/NetGding.WebAPI.csproj"
 COPY . .
 WORKDIR "/src/NetGding.Services/NetGding.WebAPI"
 RUN dotnet publish "NetGding.WebAPI.csproj" -c Release -o /app/publish /p:UseAppHost=false
+COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
+RUN mkdir -p /app/db && chown -R app:app /app/db
 USER app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "NetGding.WebAPI.dll"]

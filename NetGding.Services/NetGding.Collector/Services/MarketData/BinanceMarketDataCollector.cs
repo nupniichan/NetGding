@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.MarketData;
 
 namespace NetGding.Collector.Services.MarketData;
@@ -42,7 +43,17 @@ public sealed class BinanceMarketDataCollector : IExchangeMarketDataCollector
         using var response = await _httpClientFactory.CreateClient(nameof(BinanceMarketDataCollector))
             .GetAsync(url, ct)
             .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            _logger.LogError("Binance collector [{MarketType}]: API request failed for {Symbol} ({StatusCode}): {Body}",
+                MarketType, normalized, response.StatusCode, errorBody);
+
+            throw new NetGding.Contracts.Exceptions.NetGdingException(
+                ErrorCodes.MarketDataFetchFailed,
+                "BinanceMarketDataCollector.CollectAsync",
+                $"Binance API request failed for {normalized} ({(int)response.StatusCode} {response.ReasonPhrase}): {errorBody}");
+        }
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         using var json = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);

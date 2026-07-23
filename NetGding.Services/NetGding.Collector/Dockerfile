@@ -10,6 +10,7 @@ RUN dotnet restore "NetGding.Services/NetGding.Collector/NetGding.Collector.cspr
 COPY . .
 WORKDIR "/src/NetGding.Services/NetGding.Collector"
 RUN dotnet publish "NetGding.Collector.csproj" -c Release -o /app/publish /p:UseAppHost=false
+COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

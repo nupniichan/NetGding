@@ -1,4 +1,21 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: netgding-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   discord:
     build:
       context: .
@@ -8,10 +25,15 @@ services:
       - .env
     environment:
       ASPNETCORE_URLS: http://+:8080
-      Discord__CollectorBaseUrl: http://collector:8081
+      Redis__ConnectionString: redis:6379
       Discord__WebApiBaseUrl: http://webapi:8080
     ports:
       - "5003:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      webapi:
+        condition: service_started
     restart: unless-stopped
 
   telegram:
@@ -23,10 +45,15 @@ services:
       - .env
     environment:
       ASPNETCORE_URLS: http://+:8080
-      Telegram__CollectorBaseUrl: http://collector:8081
+      Redis__ConnectionString: redis:6379
       Telegram__WebApiBaseUrl: http://webapi:8080
     ports:
       - "5002:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      webapi:
+        condition: service_started
     restart: unless-stopped
 
   webapi:
@@ -38,12 +65,17 @@ services:
       - .env
     environment:
       ASPNETCORE_URLS: http://+:8080
-      WebApi__TelegramServiceUrl: http://telegram:8080
-      WebApi__CollectorServiceUrl: http://collector:8081
+      Redis__ConnectionString: redis:6379
+      WebApi__CollectorServiceUrl: http://collector:8080
     ports:
       - "5001:8080"
     volumes:
-      - ./db:/app/db
+      - webapi-db:/app/db
+    depends_on:
+      redis:
+        condition: service_healthy
+      collector:
+        condition: service_started
     restart: unless-stopped
 
   collector:
@@ -54,15 +86,20 @@ services:
     env_file:
       - .env
     environment:
-      ASPNETCORE_URLS: http://+:8081
-      Collector__WebApiPublishEnabled: "true"
-      Collector__WebApiBaseUrl: http://webapi:8080
+      ASPNETCORE_URLS: http://+:8080
+      Redis__ConnectionString: redis:6379
       Collector__OutputDirectory: /app/data
+      Collector__WebApiBaseUrl: http://webapi:8080
     ports:
-      - "5000:8081"
+      - "5000:8080"
     volumes:
       - collector-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   collector-data:
+  webapi-db:
+  redis-data:

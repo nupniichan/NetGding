@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Options;
+using NetGding.Contracts.Exceptions;
 using NetGding.WebApi.Models;
 
 namespace NetGding.WebApi.Services;
@@ -37,7 +38,7 @@ public sealed class CoinMarketCapFearAndGreedProvider : IFearAndGreedProvider
         if (string.IsNullOrWhiteSpace(cmcApiKey))
         {
             throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_CMC_API_KEY_MISSING",
+                ErrorCodes.CmcApiKeyMissing,
                 "CoinMarketCapFearAndGreedProvider.GetLatestAsync",
                 "CoinMarketCap API Key is not configured in settings.");
         }
@@ -55,7 +56,7 @@ public sealed class CoinMarketCapFearAndGreedProvider : IFearAndGreedProvider
             if (content?.Data is null)
             {
                 throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    "ERR_CMC_API_EMPTY_RESPONSE",
+                    ErrorCodes.CmcApiEmptyResponse,
                     "CoinMarketCapFearAndGreedProvider.GetLatestAsync",
                     "CoinMarketCap returned an empty or invalid response.");
             }
@@ -70,7 +71,7 @@ public sealed class CoinMarketCapFearAndGreedProvider : IFearAndGreedProvider
         catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
             throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_CMC_API_FAILED",
+                ErrorCodes.CmcApiFailed,
                 "CoinMarketCapFearAndGreedProvider.GetLatestAsync",
                 $"Failed to fetch Fear & Greed Index from CoinMarketCap: {ex.Message}", ex);
         }

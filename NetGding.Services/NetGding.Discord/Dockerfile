@@ -9,6 +9,7 @@ RUN dotnet restore "NetGding.Services/NetGding.Discord/NetGding.Discord.csproj"
 COPY . .
 WORKDIR "/src/NetGding.Services/NetGding.Discord"
 RUN dotnet publish "NetGding.Discord.csproj" -c Release -o /app/publish /p:UseAppHost=false
+COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

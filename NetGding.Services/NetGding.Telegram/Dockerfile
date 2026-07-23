@@ -9,6 +9,7 @@ RUN dotnet restore "NetGding.Services/NetGding.Telegram/NetGding.Telegram.csproj
 COPY . .
 WORKDIR "/src/NetGding.Services/NetGding.Telegram"
 RUN dotnet publish "NetGding.Telegram.csproj" -c Release -o /app/publish /p:UseAppHost=false
+COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Options;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
@@ -40,8 +41,10 @@ public sealed class AnalysisChartRenderer : IChartRenderer
         var opt = _options.CurrentValue;
         if (string.IsNullOrWhiteSpace(opt.ChartImgApiKey))
         {
-            _logger.LogWarning("AnalysisChartRenderer: ChartImgApiKey is not configured, skipping chart rendering");
-            return [];
+            throw new NetGdingException(
+                ErrorCodes.ChartRenderFailed,
+                "AnalysisChartRenderer.RenderAsync",
+                "ChartImgApiKey is not configured.");
         }
 
         try
@@ -132,15 +135,22 @@ public sealed class AnalysisChartRenderer : IChartRenderer
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogError("AnalysisChartRenderer: API request failed with status code {StatusCode}: {Body}",
                     (int)response.StatusCode, errorBody);
-                return [];
+
+                throw new NetGdingException(
+                    ErrorCodes.ChartRenderFailed,
+                    "AnalysisChartRenderer.RenderAsync",
+                    $"Chart-Img API request failed with status code {(int)response.StatusCode}: {errorBody}");
             }
 
             return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not NetGdingException)
         {
             _logger.LogError(ex, "AnalysisChartRenderer: failed to render chart for {Symbol}", result.Symbol);
-            return [];
+            throw new NetGdingException(
+                ErrorCodes.ChartRenderFailed,
+                "AnalysisChartRenderer.RenderAsync",
+                $"Failed to render chart for {result.Symbol}: {ex.Message}", ex);
         }
     }
 

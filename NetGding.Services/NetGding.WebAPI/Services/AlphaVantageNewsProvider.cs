@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using NetGding.Configurations.Options;
+using NetGding.Contracts.Exceptions;
 using NetGding.WebApi.Models;
 
 namespace NetGding.WebApi.Services;
@@ -54,16 +55,23 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
                     if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
                     {
                         throw new NetGding.Contracts.Exceptions.NetGdingException(
-                            "ERR_ALPHAVANTAGE_API_ERROR",
+                            ErrorCodes.AlphaVantageApiError,
                             "AlphaVantageNewsProvider.GetNewsAsync",
                             $"AlphaVantage API error: {response.ErrorMessage}");
                     }
                     if (!string.IsNullOrWhiteSpace(response.Note))
                     {
                         throw new NetGding.Contracts.Exceptions.NetGdingException(
-                            "ERR_ALPHAVANTAGE_RATE_LIMIT",
+                            ErrorCodes.AlphaVantageRateLimit,
                             "AlphaVantageNewsProvider.GetNewsAsync",
                             $"AlphaVantage API rate limit: {response.Note}");
+                    }
+                    if (!string.IsNullOrWhiteSpace(response.Information))
+                    {
+                        throw new NetGding.Contracts.Exceptions.NetGdingException(
+                            ErrorCodes.AlphaVantageRateLimit,
+                            "AlphaVantageNewsProvider.GetNewsAsync",
+                            $"AlphaVantage API info/rate limit: {response.Information}");
                     }
                 }
                 return [];
@@ -97,7 +105,7 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
         catch (Exception ex) when (ex is not NetGding.Contracts.Exceptions.NetGdingException)
         {
             throw new NetGding.Contracts.Exceptions.NetGdingException(
-                "ERR_ALPHAVANTAGE_API_FAILED",
+                ErrorCodes.AlphaVantageApiFailed,
                 "AlphaVantageNewsProvider.GetNewsAsync",
                 $"AlphaVantage API call failed for ticker '{ticker}': {ex.Message}", ex);
         }
@@ -106,17 +114,20 @@ public sealed class AlphaVantageNewsProvider : INewsProvider
     private static string NormalizeTickerForAlphaVantage(string symbol)
     {
         var cleaned = symbol.Trim().ToUpperInvariant();
+        if (cleaned.StartsWith("CRYPTO:", StringComparison.OrdinalIgnoreCase))
+            return cleaned;
+
+        string coin = cleaned;
         if (cleaned.Contains('/'))
-            return cleaned.Split('/')[0];
-        if (cleaned.Contains('-'))
-            return cleaned.Split('-')[0];
+            coin = cleaned.Split('/')[0];
+        else if (cleaned.Contains('-'))
+            coin = cleaned.Split('-')[0];
+        else if (cleaned.EndsWith("USDT") && cleaned.Length > 4)
+            coin = cleaned[..^4];
+        else if (cleaned.EndsWith("USD") && cleaned.Length > 3)
+            coin = cleaned[..^3];
 
-        if (cleaned.EndsWith("USDT") && cleaned.Length > 4)
-            return cleaned[..^4];
-        if (cleaned.EndsWith("USD") && cleaned.Length > 3)
-            return cleaned[..^3];
-
-        return cleaned;
+        return $"CRYPTO:{coin}";
     }
 
     private static DateTime ParseTimePublished(string timePublished)
