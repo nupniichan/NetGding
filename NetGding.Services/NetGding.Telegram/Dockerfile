@@ -12,6 +12,8 @@ RUN dotnet publish "NetGding.Telegram.csproj" -c Release -o /app/publish /p:UseA
 COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+LABEL org.opencontainers.image.title="NetGding.Telegram" \
+      org.opencontainers.image.description="NetGding Telegram Bot Service"
 WORKDIR /app
 USER app
 COPY --from=build /app/publish .

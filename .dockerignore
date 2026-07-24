@@ -1,6 +1,17 @@
 **/.git
 **/.vs
+**/.vscode
+**/.cursor
+**/.github
 **/bin
 **/obj
 **/db/*.db
 **/.env
+**/.env.*
+!**/.env.example
+**/*.md
+**/docker-compose*.yml
+**/*.user
+**/*.suo
+**/.idea
+**/TestResults

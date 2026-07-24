@@ -3,80 +3,35 @@ services:
     image: redis:7-alpine
     container_name: netgding-redis
     command: redis-server /usr/local/etc/redis/redis.conf
+    expose:
+      - "6379"
     ports:
       - "6379:6379"
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis-data:/data
     restart: unless-stopped
+    networks:
+      - netgding-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 300M
+        reservations:
+          cpus: '0.10'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 5s
-
-  discord:
-    build:
-      context: .
-      dockerfile: NetGding.Services/NetGding.Discord/Dockerfile
-    container_name: netgding-discord
-    env_file:
-      - .env
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      Redis__ConnectionString: redis:6379
-      Discord__WebApiBaseUrl: http://webapi:8080
-    ports:
-      - "5003:8080"
-    depends_on:
-      redis:
-        condition: service_healthy
-      webapi:
-        condition: service_started
-    restart: unless-stopped
-
-  telegram:
-    build:
-      context: .
-      dockerfile: NetGding.Services/NetGding.Telegram/Dockerfile
-    container_name: netgding-telegram
-    env_file:
-      - .env
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      Redis__ConnectionString: redis:6379
-      Telegram__WebApiBaseUrl: http://webapi:8080
-    ports:
-      - "5002:8080"
-    depends_on:
-      redis:
-        condition: service_healthy
-      webapi:
-        condition: service_started
-    restart: unless-stopped
-
-  webapi:
-    build:
-      context: .
-      dockerfile: NetGding.Services/NetGding.WebAPI/Dockerfile
-    container_name: netgding-webapi
-    env_file:
-      - .env
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      Redis__ConnectionString: redis:6379
-      WebApi__CollectorServiceUrl: http://collector:8080
-    ports:
-      - "5001:8080"
-    volumes:
-      - webapi-db:/app/db
-    depends_on:
-      redis:
-        condition: service_healthy
-      collector:
-        condition: service_started
-    restart: unless-stopped
 
   collector:
     build:
@@ -98,6 +53,171 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netgding-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  webapi:
+    build:
+      context: .
+      dockerfile: NetGding.Services/NetGding.WebAPI/Dockerfile
+    container_name: netgding-webapi
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Redis__ConnectionString: redis:6379
+      WebApi__CollectorServiceUrl: http://collector:8080
+    ports:
+      - "5001:8080"
+    volumes:
+      - webapi-db:/app/db
+    depends_on:
+      redis:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netgding-frontend
+      - netgding-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  discord:
+    build:
+      context: .
+      dockerfile: NetGding.Services/NetGding.Discord/Dockerfile
+    container_name: netgding-discord
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Redis__ConnectionString: redis:6379
+      Discord__WebApiBaseUrl: http://webapi:8080
+    ports:
+      - "5003:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      webapi:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netgding-frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  telegram:
+    build:
+      context: .
+      dockerfile: NetGding.Services/NetGding.Telegram/Dockerfile
+    container_name: netgding-telegram
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Redis__ConnectionString: redis:6379
+      Telegram__WebApiBaseUrl: http://webapi:8080
+    ports:
+      - "5002:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      webapi:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netgding-frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  netgding-frontend:
+    driver: bridge
+  netgding-backend:
+    driver: bridge
 
 volumes:
   collector-data:

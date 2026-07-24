@@ -12,6 +12,8 @@ RUN dotnet publish "NetGding.Discord.csproj" -c Release -o /app/publish /p:UseAp
 COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+LABEL org.opencontainers.image.title="NetGding.Discord" \
+      org.opencontainers.image.description="NetGding Discord Bot Service"
 WORKDIR /app
 USER app
 COPY --from=build /app/publish .

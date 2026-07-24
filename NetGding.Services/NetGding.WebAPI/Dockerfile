@@ -12,6 +12,8 @@ RUN dotnet publish "NetGding.WebAPI.csproj" -c Release -o /app/publish /p:UseApp
 COPY appsettings.Shared.json /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+LABEL org.opencontainers.image.title="NetGding.WebAPI" \
+      org.opencontainers.image.description="NetGding WebAPI Gateway Service"
 WORKDIR /app
 RUN mkdir -p /app/db && chown -R app:app /app/db
 USER app
