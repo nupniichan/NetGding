@@ -13,12 +13,7 @@ public sealed class RedisEventBus : IEventBus
     private readonly IOptionsMonitor<RedisOptions> _options;
     private readonly ILogger<RedisEventBus> _logger;
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
+    private static readonly JsonSerializerOptions s_jsonOptions = JsonDefaults.Options;
 
     public RedisEventBus(
         IConnectionMultiplexer redis,

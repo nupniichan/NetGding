@@ -16,6 +16,8 @@ LABEL org.opencontainers.image.title="NetGding.WebAPI" \
       org.opencontainers.image.description="NetGding WebAPI Gateway Service"
 WORKDIR /app
 RUN mkdir -p /app/db && chown -R app:app /app/db
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 USER app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "NetGding.WebAPI.dll"]

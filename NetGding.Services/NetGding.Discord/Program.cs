@@ -23,13 +23,13 @@ builder.Services
 
 builder.Services.AddRedisMessaging(builder.Configuration);
 
-builder.Services.AddHttpClient("WebApiClient", (sp, client) =>
+builder.Services.AddHttpClient<IWebApiClient, WebApiClient>((sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<DiscordOptions>>().Value;
     if (o.WebApiHttpTimeoutSeconds > 0)
         client.Timeout = TimeSpan.FromSeconds(o.WebApiHttpTimeoutSeconds);
     if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        client.BaseAddress = new Uri(o.WebApiBaseUrl);
+        client.BaseAddress = new Uri(o.WebApiBaseUrl.TrimEnd('/') + "/");
 });
 
 builder.Services.AddSingleton(sp =>

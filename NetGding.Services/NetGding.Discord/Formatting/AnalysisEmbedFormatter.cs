@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using DSharpPlus.Entities;
 using NetGding.Contracts.Models.Analysis;
 using NetGding.Contracts.Models.Analysis.Enums;
 using NetGding.Contracts.Models.MarketData;
+using NetGding.Contracts.Models.News;
 
 namespace NetGding.Discord.Formatting;
 
@@ -231,7 +231,7 @@ public sealed class AnalysisEmbedFormatter
             .Build();
     }
 
-    public DiscordEmbed BuildNewsEmbed(string symbol, IReadOnlyList<DiscordNewsItem> articles)
+    public DiscordEmbed BuildNewsEmbed(string symbol, IReadOnlyList<NewsItem> articles)
     {
         var builder = new DiscordEmbedBuilder()
             .WithTitle($"NetGding News | {symbol.ToUpperInvariant()}")
@@ -254,7 +254,6 @@ public sealed class AnalysisEmbedFormatter
             };
 
             var description = $"**Source:** {art.Source} | {sentimentEmoji} {art.Sentiment ?? "Neutral"}\n" +
-                              $"**Published:** {art.PublishedAtUtc:yyyy-MM-dd HH:mm:ss} UTC\n" +
                               $"[Read Article]({art.Url})\n" +
                               $"{art.Summary}";
 

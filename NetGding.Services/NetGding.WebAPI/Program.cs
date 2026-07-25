@@ -108,6 +108,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.MapMinimalHealthEndpoint();
 app.MapAnalysisEndpoints();
 app.MapSupportEndpoints();
 app.MapHealthEndpoints();

@@ -13,12 +13,7 @@ namespace NetGding.Analyzer.Llm;
 
 public sealed class LlmAnalyzer : ILlmAnalyzer
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions s_jsonOptions = NetGding.Contracts.JsonDefaults.Options;
 
     private readonly HttpClient _httpClient;
     private readonly LlmOptions _options;

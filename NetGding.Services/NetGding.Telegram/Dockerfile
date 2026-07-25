@@ -15,6 +15,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 LABEL org.opencontainers.image.title="NetGding.Telegram" \
       org.opencontainers.image.description="NetGding Telegram Bot Service"
 WORKDIR /app
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 USER app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "NetGding.Telegram.dll"]

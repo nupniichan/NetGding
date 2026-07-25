@@ -16,6 +16,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 LABEL org.opencontainers.image.title="NetGding.Collector" \
       org.opencontainers.image.description="NetGding Market Data Collector Service"
 WORKDIR /app
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 USER app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "NetGding.Collector.dll"]

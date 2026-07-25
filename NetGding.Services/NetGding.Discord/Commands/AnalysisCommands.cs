@@ -1,54 +1,37 @@
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using DSharpPlus;
 using DSharpPlus.Entities;
 using DSharpPlus.SlashCommands;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NetGding.Configurations.Bootstrap;
 using NetGding.Configurations.Options;
+using NetGding.Contracts;
+using NetGding.Contracts.Exceptions;
 using NetGding.Contracts.Models.Analysis;
-using NetGding.Contracts.Models.MarketData;
-using NetGding.Discord.Formatting;
-
 using NetGding.Contracts.Services;
+using NetGding.Discord.Formatting;
 
 namespace NetGding.Discord.Commands;
 
 public sealed class AnalysisCommands : ApplicationCommandModule
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
-
-    private static readonly HashSet<string> s_allowedTimeframes =
-        new(StringComparer.OrdinalIgnoreCase) { "15m", "1h", "4h", "1d", "1w", "1m" };
-    private static readonly HashSet<string> s_allowedExchanges =
-        new(StringComparer.OrdinalIgnoreCase) { "binance", "okx" };
-    private static readonly HashSet<string> s_allowedMarketTypes =
-        new(StringComparer.OrdinalIgnoreCase) { "spot" };
-
     private readonly IAnalysisCache _store;
     private readonly AnalysisEmbedFormatter _formatter;
-    private readonly IHttpClientFactory _httpFactory;
+    private readonly IWebApiClient _webApiClient;
     private readonly IOptionsMonitor<DiscordOptions> _options;
     private readonly ILogger<AnalysisCommands> _logger;
 
     public AnalysisCommands(
         IAnalysisCache store,
         AnalysisEmbedFormatter formatter,
-        IHttpClientFactory httpFactory,
+        IWebApiClient webApiClient,
         IOptionsMonitor<DiscordOptions> options,
         ILogger<AnalysisCommands> logger)
     {
-        _store = store;
-        _formatter = formatter;
-        _httpFactory = httpFactory;
-        _options = options;
-        _logger = logger;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _formatter = formatter ?? throw new ArgumentNullException(nameof(formatter));
+        _webApiClient = webApiClient ?? throw new ArgumentNullException(nameof(webApiClient));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     [SlashCommand("help", "Show available commands")]
@@ -59,8 +42,6 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             .WithColor(new DiscordColor(0x5865F2))
             .WithDescription(
                 "**Available commands:**\n\n" +
-                "• `/help` — show available commands\n" +
-                "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
                 "• `/help` — show available commands\n" +
                 "• `/latest <symbol>` — get cached analysis for a symbol (D1+)\n" +
                 "• `/analyze <symbol> <timeframe> [exchange]` — run live analysis (default exchange: binance)\n" +
@@ -96,7 +77,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         InteractionContext ctx,
         [Option("symbol", "Symbol e.g. BTC")] string symbol)
     {
-        var normalizedSymbol = NormalizeSymbol(symbol);
+        var normalizedSymbol = ValidationConstants.NormalizeSymbol(symbol);
         var result = _store.GetLatest(normalizedSymbol);
 
         if (result is null)
@@ -123,12 +104,12 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m")] string timeframe,
         [Option("exchange", "Exchange: binance, okx")] string exchange = "binance")
     {
-        var normalizedSymbol = NormalizeSymbol(symbol);
+        var normalizedSymbol = ValidationConstants.NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
         exchange = exchange.Trim().ToLowerInvariant();
         const string marketType = "spot";
 
-        if (!s_allowedTimeframes.Contains(timeframe))
+        if (!ValidationConstants.AllowedTimeframes.Contains(timeframe))
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
@@ -138,7 +119,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             return;
         }
 
-        if (!s_allowedExchanges.Contains(exchange))
+        if (!ValidationConstants.AllowedExchanges.Contains(exchange))
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
@@ -153,7 +134,9 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType)
+            var req = new OnDemandRequest(normalizedSymbol, timeframe, exchange, marketType);
+            var o = _options.CurrentValue;
+            var notification = await _webApiClient.FetchOnDemandAnalysisAsync(req, o.OnDemandMaxRetries, o.OnDemandRetryBaseDelaySeconds)
                 .ConfigureAwait(false);
 
             _store.Store(notification.Result);
@@ -178,72 +161,9 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "AnalysisCommands: on-demand analysis failed for {Symbol} ({Timeframe})",
-                normalizedSymbol, timeframe);
-
-            var errorMsg = "Collector service is unavailable. Please try again in a moment.";
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                errorMsg = $"❌ **Analysis Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                errorMsg = $"❌ **Analysis Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
-            }
-
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder()
-                    .WithContent(errorMsg))
-                .ConfigureAwait(false);
+            _logger.LogError(ex, "AnalysisCommands: on-demand analysis failed for {Symbol} ({Timeframe})", normalizedSymbol, timeframe);
+            await SendFormattedErrorAsync(ctx, "Analysis Failed", ex).ConfigureAwait(false);
         }
-    }
-
-    private async Task<AnalysisNotification> FetchOnDemandAnalysisAsync(
-        string symbol,
-        string timeframe,
-        string exchange,
-        string marketType,
-        string? chartSymbol = null,
-        bool chartOnly = false)
-    {
-        var o = _options.CurrentValue;
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/analysis/on-demand";
-        var payload = new { symbol, timeframe, exchange, marketType, chartSymbol, chartOnly };
-
-        var response = await HttpRetryHelper.ExecuteAsync(
-            () => _httpFactory.CreateClient("WebApiClient").PostAsJsonAsync(url, payload),
-            maxRetries: Math.Max(1, o.OnDemandMaxRetries),
-            baseDelaySeconds: o.OnDemandRetryBaseDelaySeconds,
-            onRetry: (attempt, max, status) => _logger.LogWarning(
-                "AnalysisCommands: on-demand attempt {Attempt}/{Max} failed (status={Status}) for {Symbol} ({Timeframe})",
-                attempt, max, status, symbol, timeframe)).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse? errResp = null;
-            try
-            {
-                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
-            }
-            catch { }
-
-            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
-            {
-                throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    errResp.ErrorCode,
-                    errResp.Location,
-                    errResp.Message);
-            }
-
-            response.EnsureSuccessStatusCode();
-        }
-
-        var notification = await response.Content
-            .ReadFromJsonAsync<AnalysisNotification>(s_jsonOptions)
-            .ConfigureAwait(false);
-
-        return notification ?? throw new InvalidOperationException("WebAPI returned empty response.");
     }
 
     [SlashCommand("fagi", "Get the current Crypto Fear and Greed Index")]
@@ -253,7 +173,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var fng = await FetchFearAndGreedAsync().ConfigureAwait(false);
+            var fng = await _webApiClient.FetchFearAndGreedAsync().ConfigureAwait(false);
 
             var emoji = AnalysisEmbedFormatter.GetFearAndGreedEmoji(fng.Value);
             var color = GetFearAndGreedColor(fng.Value);
@@ -276,26 +196,6 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         }
     }
 
-    private async Task<FearAndGreedResult> FetchFearAndGreedAsync()
-    {
-        var o = _options.CurrentValue;
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/fear-and-greed";
-        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<FearAndGreedResult>(s_jsonOptions).ConfigureAwait(false);
-        return result ?? throw new InvalidOperationException("WebAPI returned empty response.");
-    }
-
-    private static DiscordColor GetFearAndGreedColor(int value) => value switch
-    {
-        <= 25 => new DiscordColor(0xD63031),
-        <= 45 => new DiscordColor(0xE67E22),
-        <= 55 => new DiscordColor(0xF1C40F),
-        <= 75 => new DiscordColor(0x2ECC71),
-        _ => new DiscordColor(0x00B894)
-    };
-
     [SlashCommand("chart", "Get live chart for a symbol")]
     public async Task ChartAsync(
         InteractionContext ctx,
@@ -303,12 +203,12 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         [Option("timeframe", "Timeframe: 15m, 1h, 4h, 1d, 1w, 1m (default: 4h)")] string timeframe = "4h",
         [Option("exchange", "Exchange: binance, okx (default: binance)")] string exchange = "binance")
     {
-        var normalizedSymbol = NormalizeSymbol(symbol);
+        var normalizedSymbol = ValidationConstants.NormalizeSymbol(symbol);
         timeframe = timeframe.Trim().ToLowerInvariant();
         exchange = exchange.Trim().ToLowerInvariant();
         const string marketType = "spot";
 
-        if (!s_allowedTimeframes.Contains(timeframe))
+        if (!ValidationConstants.AllowedTimeframes.Contains(timeframe))
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
@@ -318,7 +218,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             return;
         }
 
-        if (!s_allowedExchanges.Contains(exchange))
+        if (!ValidationConstants.AllowedExchanges.Contains(exchange))
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
@@ -333,7 +233,9 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, chartOnly: true)
+            var req = new OnDemandRequest(normalizedSymbol, timeframe, exchange, marketType, ChartOnly: true);
+            var o = _options.CurrentValue;
+            var notification = await _webApiClient.FetchOnDemandAnalysisAsync(req, o.OnDemandMaxRetries, o.OnDemandRetryBaseDelaySeconds)
                 .ConfigureAwait(false);
 
             var embed = _formatter.BuildChartEmbed(notification.Result);
@@ -356,24 +258,8 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "AnalysisCommands: on-demand chart failed for {Symbol} ({Timeframe})",
-                normalizedSymbol, timeframe);
-
-            var errorMsg = "Collector service is unavailable. Please try again in a moment.";
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                errorMsg = $"❌ **Chart Generation Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                errorMsg = $"❌ **Chart Generation Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
-            }
-
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder()
-                    .WithContent(errorMsg))
-                .ConfigureAwait(false);
+            _logger.LogError(ex, "AnalysisCommands: on-demand chart failed for {Symbol} ({Timeframe})", normalizedSymbol, timeframe);
+            await SendFormattedErrorAsync(ctx, "Chart Generation Failed", ex).ConfigureAwait(false);
         }
     }
 
@@ -383,7 +269,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         [Option("symbol", "Symbol e.g. BTC (default: BTC)")] string symbol = "BTC",
         [Option("limit", "Number of articles (default: 5)")] long limit = 5)
     {
-        var normalizedSymbol = NormalizeSymbol(symbol);
+        var normalizedSymbol = ValidationConstants.NormalizeSymbol(symbol);
         var normLimit = (int)Math.Clamp(limit, 1, 10);
 
         await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
@@ -391,7 +277,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
 
         try
         {
-            var articles = await FetchNewsAsync(normalizedSymbol, normLimit).ConfigureAwait(false);
+            var articles = await _webApiClient.FetchNewsAsync(normalizedSymbol, normLimit).ConfigureAwait(false);
             var embed = _formatter.BuildNewsEmbed(normalizedSymbol, articles);
 
             await ctx.EditResponseAsync(
@@ -400,21 +286,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         catch (Exception ex)
         {
             _logger.LogError(ex, "AnalysisCommands: news fetch failed for {Symbol}", normalizedSymbol);
-
-            var errorMsg = "WebAPI news service is unavailable. Please try again in a moment.";
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                errorMsg = $"❌ **News Fetch Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                errorMsg = $"❌ **News Fetch Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
-            }
-
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder()
-                    .WithContent(errorMsg))
-                .ConfigureAwait(false);
+            await SendFormattedErrorAsync(ctx, "News Fetch Failed", ex).ConfigureAwait(false);
         }
     }
 
@@ -428,7 +300,7 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         var marketType = "spot";
         timeframe = timeframe.Trim().ToLowerInvariant();
 
-        if (!s_allowedTimeframes.Contains(timeframe))
+        if (!ValidationConstants.AllowedTimeframes.Contains(timeframe))
         {
             await ctx.CreateResponseAsync(
                 InteractionResponseType.ChannelMessageWithSource,
@@ -438,32 +310,14 @@ public sealed class AnalysisCommands : ApplicationCommandModule
             return;
         }
 
-        if (!s_allowedExchanges.Contains(exchange))
-        {
-            await ctx.CreateResponseAsync(
-                InteractionResponseType.ChannelMessageWithSource,
-                new DiscordInteractionResponseBuilder()
-                    .WithContent("Supported exchanges: `binance`, `okx`.")
-                    .AsEphemeral(true)).ConfigureAwait(false);
-            return;
-        }
-
-        if (!s_allowedMarketTypes.Contains(marketType))
-        {
-            await ctx.CreateResponseAsync(
-                InteractionResponseType.ChannelMessageWithSource,
-                new DiscordInteractionResponseBuilder()
-                    .WithContent("Supported market types: `spot`, `future`.")
-                    .AsEphemeral(true)).ConfigureAwait(false);
-            return;
-        }
-
         await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource)
             .ConfigureAwait(false);
 
         try
         {
-            var notification = await FetchOnDemandAnalysisAsync(normalizedSymbol, timeframe, exchange, marketType, "CRYPTOCAP:BTC.D", chartOnly: true).ConfigureAwait(false);
+            var req = new OnDemandRequest(normalizedSymbol, timeframe, exchange, marketType, ChartSymbol: "CRYPTOCAP:BTC.D", ChartOnly: true);
+            var o = _options.CurrentValue;
+            var notification = await _webApiClient.FetchOnDemandAnalysisAsync(req, o.OnDemandMaxRetries, o.OnDemandRetryBaseDelaySeconds).ConfigureAwait(false);
 
             var embed = _formatter.BuildDomChartEmbed(notification.Result);
 
@@ -486,89 +340,31 @@ public sealed class AnalysisCommands : ApplicationCommandModule
         catch (Exception ex)
         {
             _logger.LogError(ex, "AnalysisCommands: DOM or chart request failed for {Symbol}", normalizedSymbol);
-
-            var errorMsg = "Service is unavailable. Please try again in a moment.";
-            if (ex is NetGding.Contracts.Exceptions.NetGdingException nex)
-            {
-                errorMsg = $"❌ **Request Failed**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
-            }
-            else if (ex.InnerException is NetGding.Contracts.Exceptions.NetGdingException inex)
-            {
-                errorMsg = $"❌ **Request Failed**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
-            }
-
-            await ctx.EditResponseAsync(
-                new DiscordWebhookBuilder()
-                    .WithContent(errorMsg))
-                .ConfigureAwait(false);
+            await SendFormattedErrorAsync(ctx, "Request Failed", ex).ConfigureAwait(false);
         }
     }
 
-    private async Task<IReadOnlyList<DiscordNewsItem>> FetchNewsAsync(string symbol, int limit)
+    private static async Task SendFormattedErrorAsync(InteractionContext ctx, string title, Exception ex)
     {
-        var o = _options.CurrentValue;
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/news/{Uri.EscapeDataString(symbol)}?limit={limit}";
-
-        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        var errorMsg = "Service is unavailable. Please try again in a moment.";
+        if (ex is NetGdingException nex)
         {
-            ErrorResponse? errResp = null;
-            try
-            {
-                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
-            }
-            catch { }
-
-            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
-            {
-                throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    errResp.ErrorCode,
-                    errResp.Location,
-                    errResp.Message);
-            }
-            response.EnsureSuccessStatusCode();
+            errorMsg = $"❌ **{title}**\n• **Code:** `{nex.ErrorCode}`\n• **Location:** `{nex.Location}`\n• **Message:** {nex.Message}";
         }
-
-        var payload = await response.Content.ReadFromJsonAsync<DiscordNewsResponse>(s_jsonOptions).ConfigureAwait(false);
-        return payload?.Items ?? Array.Empty<DiscordNewsItem>();
-    }
-
-    private async Task<MarketDepthDto?> FetchDomAsync(string symbol, string exchange, string marketType, int limit)
-    {
-        var o = _options.CurrentValue;
-        var url = $"{o.WebApiBaseUrl.TrimEnd('/')}/api/market/dom?symbol={Uri.EscapeDataString(symbol)}&exchange={Uri.EscapeDataString(exchange)}&marketType={Uri.EscapeDataString(marketType)}&limit={limit}";
-
-        var response = await _httpFactory.CreateClient("WebApiClient").GetAsync(url).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        else if (ex.InnerException is NetGdingException inex)
         {
-            ErrorResponse? errResp = null;
-            try
-            {
-                errResp = await response.Content.ReadFromJsonAsync<ErrorResponse>(s_jsonOptions).ConfigureAwait(false);
-            }
-            catch { }
-
-            if (errResp is not null && !string.IsNullOrWhiteSpace(errResp.ErrorCode))
-            {
-                throw new NetGding.Contracts.Exceptions.NetGdingException(
-                    errResp.ErrorCode,
-                    errResp.Location,
-                    errResp.Message);
-            }
-            return null;
+            errorMsg = $"❌ **{title}**\n• **Code:** `{inex.ErrorCode}`\n• **Location:** `{inex.Location}`\n• **Message:** {inex.Message}";
         }
 
-        return await response.Content.ReadFromJsonAsync<MarketDepthDto>(s_jsonOptions).ConfigureAwait(false);
+        await ctx.EditResponseAsync(new DiscordWebhookBuilder().WithContent(errorMsg)).ConfigureAwait(false);
     }
 
-    private static string NormalizeSymbol(string symbol)
+    private static DiscordColor GetFearAndGreedColor(int value) => value switch
     {
-        var normalized = symbol.Trim().ToUpperInvariant();
-        return normalized.Contains('/', StringComparison.Ordinal) ? normalized : $"{normalized}/USD";
-    }
-
-    private sealed record DiscordNewsResponse(
-        string Symbol,
-        int Count,
-        IReadOnlyList<DiscordNewsItem> Items);
+        <= 25 => new DiscordColor(0xD63031),
+        <= 45 => new DiscordColor(0xE67E22),
+        <= 55 => new DiscordColor(0xF1C40F),
+        <= 75 => new DiscordColor(0x2ECC71),
+        _ => new DiscordColor(0x00B894)
+    };
 }

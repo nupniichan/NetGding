@@ -29,13 +29,13 @@ builder.Services.AddHttpClient(nameof(TelegramNotifier), (sp, client) =>
         client.Timeout = TimeSpan.FromSeconds(o.NotifierHttpTimeoutSeconds);
 });
 
-builder.Services.AddHttpClient("WebApiClient", (sp, client) =>
+builder.Services.AddHttpClient<IWebApiClient, WebApiClient>((sp, client) =>
 {
     var o = sp.GetRequiredService<IOptions<TelegramOptions>>().Value;
     if (o.WebApiHttpTimeoutSeconds > 0)
         client.Timeout = TimeSpan.FromSeconds(o.WebApiHttpTimeoutSeconds);
     if (!string.IsNullOrWhiteSpace(o.WebApiBaseUrl))
-        client.BaseAddress = new Uri(o.WebApiBaseUrl);
+        client.BaseAddress = new Uri(o.WebApiBaseUrl.TrimEnd('/') + "/");
 });
 
 builder.Services.AddSingleton<IAnalysisCache, RedisAnalysisCache>();
