@@ -16,6 +16,7 @@ public sealed class TradingDbContext : DbContext
     }
 
     public DbSet<AnalysisResult> AnalysisResults => Set<AnalysisResult>();
+    public DbSet<NewsItemEntity> CachedNewsItems => Set<NewsItemEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +48,20 @@ public sealed class TradingDbContext : DbContext
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, s_jsonOptions),
                     v => JsonSerializer.Deserialize<RiskManagement>(v, s_jsonOptions) ?? new RiskManagement());
+        });
+
+        modelBuilder.Entity<NewsItemEntity>(entity =>
+        {
+            entity.ToTable("CachedNewsItems");
+            entity.HasKey(e => new { e.Id, e.Symbol });
+            entity.Property(e => e.Symbol).HasMaxLength(50);
+            entity.Property(e => e.Title).HasMaxLength(500);
+            entity.Property(e => e.Source).HasMaxLength(100);
+            entity.Property(e => e.Url).HasMaxLength(1000);
+            entity.Property(e => e.Sentiment).HasMaxLength(50);
+
+            entity.HasIndex(e => new { e.Symbol, e.FetchedAtUtc });
+            entity.HasIndex(e => new { e.Symbol, e.PublishedAtUtc });
         });
     }
 }

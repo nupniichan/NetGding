@@ -65,7 +65,9 @@ builder.Services.AddScoped<IAnalysisResultStore, SqliteAnalysisResultStore>();
 builder.Services.AddSingleton<ISymbolMetadataProvider, SymbolMetadataProvider>();
 builder.Services.AddHttpClient<AlphaVantageNewsProvider>();
 builder.Services.AddHttpClient<GoogleNewsRssNewsProvider>();
-builder.Services.AddSingleton<INewsProvider, CompositeNewsProvider>();
+builder.Services.AddScoped<CompositeNewsProvider>();
+builder.Services.AddScoped<INewsCacheStore, SqliteNewsCacheStore>();
+builder.Services.AddScoped<INewsProvider, CachedNewsProvider>();
 builder.Services.AddHttpClient<IFearAndGreedProvider, CoinMarketCapFearAndGreedProvider>();
 
 // Subscribe to Redis stream:analysis:completed → persist to SQLite

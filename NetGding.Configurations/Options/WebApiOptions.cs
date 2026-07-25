@@ -23,4 +23,6 @@ public sealed class WebApiOptions
     public string ConnectionString { get; set; } = "";
     public string AlphaVantageApiKey { get; set; } = "";
     public string CoinMarketCapApiKey { get; set; } = "";
+    public int NewsCacheRefreshHours { get; set; } = 6;
+    public int NewsRetentionDays { get; set; } = 5;
 }
