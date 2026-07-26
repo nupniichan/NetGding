@@ -185,9 +185,9 @@ public sealed class AnalysisChartRenderer : IChartRenderer
     {
         return timeframe.Trim().ToLowerInvariant() switch
         {
-            "15m" or "15min" => "15m",
-            "1h" or "1hour" => "1h",
-            "4h" or "4hour" => "4h",
+            "15m" or "15min" => "15",
+            "1h" or "1hour" or "60m" => "60",
+            "4h" or "4hour" or "240m" => "240",
             "1d" or "1day" or "d" => "1D",
             "1w" or "1week" or "w" => "1W",
             "1m" or "1month" or "mo" => "1M",

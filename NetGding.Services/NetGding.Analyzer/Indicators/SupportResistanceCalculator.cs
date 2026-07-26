@@ -14,11 +14,11 @@ public static class SupportResistanceCalculator
         int n = bars.Count;
         if (n < 10 || atr <= 0) return;
 
-        int wing = IsIntraday(timeframe) ? 5 : 10;
+        int wing = IsIntraday(timeframe) ? 8 : 12;
         if (n < wing * 2 + 1) return;
 
         double currentPrice = bars[n - 1].Close;
-        double clusterThreshold = atr / 2.0;
+        double clusterThreshold = Math.Max(atr * 0.8, currentPrice * 0.003);
 
         var rawHighs = DetectSwingHighs(bars, wing);
         var rawLows = DetectSwingLows(bars, wing);
@@ -45,7 +45,7 @@ public static class SupportResistanceCalculator
     private static List<double> DetectSwingHighs(IReadOnlyList<OhlcvBar> bars, int wing)
     {
         int n = bars.Count;
-        var highs = new List<double>();
+        var highs = new List<double>(n / (wing * 2));
 
         for (int i = wing; i < n - wing; i++)
         {
@@ -70,7 +70,7 @@ public static class SupportResistanceCalculator
     private static List<double> DetectSwingLows(IReadOnlyList<OhlcvBar> bars, int wing)
     {
         int n = bars.Count;
-        var lows = new List<double>();
+        var lows = new List<double>(n / (wing * 2));
 
         for (int i = wing; i < n - wing; i++)
         {

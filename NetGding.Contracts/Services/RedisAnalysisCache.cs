@@ -30,24 +30,34 @@ public sealed class RedisAnalysisCache : IAnalysisCache
         try
         {
             var db = _redis.GetDatabase();
-            var normalized = Normalize(result.Symbol);
-            var alternate = normalized.Contains('/')
-                ? normalized.Replace('/', '_')
-                : normalized.Replace('_', '/');
+            var normalizedSymbol = Normalize(result.Symbol);
+            var alternateSymbol = normalizedSymbol.Contains('/')
+                ? normalizedSymbol.Replace('/', '_')
+                : normalizedSymbol.Replace('_', '/');
 
             var json = JsonSerializer.Serialize(result, s_jsonOptions);
-            db.HashSet(RedisHashKey, [
-                new HashEntry(normalized, json),
-                new HashEntry(alternate, json)
-            ]);
+            var entries = new List<HashEntry>
+            {
+                new(normalizedSymbol, json),
+                new(alternateSymbol, json)
+            };
+
+            if (!string.IsNullOrWhiteSpace(result.Timeframe))
+            {
+                var tf = Normalize(result.Timeframe);
+                entries.Add(new($"{normalizedSymbol}|{tf}", json));
+                entries.Add(new($"{alternateSymbol}|{tf}", json));
+            }
+
+            db.HashSet(RedisHashKey, entries.ToArray());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[RedisAnalysisCache] Failed to store analysis result for {Symbol}", result.Symbol);
+            _logger.LogError(ex, "[RedisAnalysisCache] Failed to store analysis result for {Symbol} ({Timeframe})", result.Symbol, result.Timeframe);
         }
     }
 
-    public AnalysisResult? GetLatest(string symbol)
+    public AnalysisResult? GetLatest(string symbol, string? timeframe = null)
     {
         if (string.IsNullOrWhiteSpace(symbol))
             return null;
@@ -55,15 +65,26 @@ public sealed class RedisAnalysisCache : IAnalysisCache
         try
         {
             var db = _redis.GetDatabase();
-            var normalized = Normalize(symbol);
-            var val = db.HashGet(RedisHashKey, normalized);
+            var normalizedSymbol = Normalize(symbol);
+            var alternateSymbol = normalizedSymbol.Contains('/')
+                ? normalizedSymbol.Replace('/', '_')
+                : normalizedSymbol.Replace('_', '/');
+
+            RedisValue val = RedisValue.Null;
+
+            if (!string.IsNullOrWhiteSpace(timeframe))
+            {
+                var tf = Normalize(timeframe);
+                val = db.HashGet(RedisHashKey, $"{normalizedSymbol}|{tf}");
+                if (val.IsNullOrEmpty)
+                    val = db.HashGet(RedisHashKey, $"{alternateSymbol}|{tf}");
+            }
 
             if (val.IsNullOrEmpty)
             {
-                var alternate = normalized.Contains('/')
-                    ? normalized.Replace('/', '_')
-                    : normalized.Replace('_', '/');
-                val = db.HashGet(RedisHashKey, alternate);
+                val = db.HashGet(RedisHashKey, normalizedSymbol);
+                if (val.IsNullOrEmpty)
+                    val = db.HashGet(RedisHashKey, alternateSymbol);
             }
 
             if (val.IsNullOrEmpty)
@@ -73,7 +94,7 @@ public sealed class RedisAnalysisCache : IAnalysisCache
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[RedisAnalysisCache] Failed to retrieve analysis result for {Symbol}", symbol);
+            _logger.LogError(ex, "[RedisAnalysisCache] Failed to retrieve analysis result for {Symbol} ({Timeframe})", symbol, timeframe);
             return null;
         }
     }
