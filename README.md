@@ -17,9 +17,14 @@
 
 ## What is NetGding?
 
-NetGding is a microservice-based trading analysis system built with .NET 10. It automates the entire pipeline from raw market data collection to AI-driven signal generation and instant delivery through chat bots.
+NetGding is an event-driven microservice-based trading analysis system built with .NET 10. It automates the entire pipeline from raw market data collection to AI-driven signal generation and instant delivery through chat bots using asynchronous Redis Pub/Sub messaging.
 
-It **does NOT execute trades**. Instead, it acts as an intelligent analysis assistant collecting OHLCV data from Binance and OKX (Spot and Futures), computing technical indicators (EMA, MACD, RSI, Bollinger Bands, ATR, VWAP, Support/Resistance), fetching global sentiment, feeding everything into a LLM for signal analysis, applying a rule based Signal Engine for guardrails and rendering advanced charts. All results are delivered to your Telegram or Discord in seconds.
+It **does NOT execute trades**. Instead, it acts as an intelligent analysis assistant collecting OHLCV data from Binance and OKX, computing technical indicators (EMA, MACD, RSI, Bollinger Bands, ATR, VWAP, Support/Resistance), fetching market news and global sentiment, feeding everything into a LLM for signal analysis, applying a rule-based Signal Engine for guardrails, and rendering advanced charts. All results are persisted and broadcast asynchronously to Telegram and Discord in seconds.
+
+---
+
+## System Architecture
+<img width="1857" height="835" alt="Diagram" src="https://github.com/user-attachments/assets/2735c072-5ee0-4e28-87be-fb96a079f350" />
 
 ---
 
@@ -33,26 +38,27 @@ This bot is currently under active development and continuous updates. Some feat
 
 | Service | Port | Description |
 |---------|------|-------------|
-| **Collector** | `8081` | Core engine, fetches OHLCV bars from Binance/OKX, resolves Order Book depth, and runs on-demand analysis. |
-| **WebAPI** | `8080` | Central REST gateway, persists results in SQLite database, handles sentiment/news API integrations, and serves Swagger UI. |
-| **Telegram** | `8080` | Telegram bot service, uses long-polling to read commands, formats and posts analysis with charts to target chat rooms. |
-| **Discord** | `8080` | Discord bot service, registers slash commands, posts formatted rich embeds with charts to target channels. |
+| **Redis** | `6379` | Central Redis message broker (Pub/Sub EventBus) and multi-tier analysis and market data cache. |
+| **Collector** | `5000` | Core engine, fetches OHLCV bars (cached via `CachedMarketDataProvider`), computes indicators, runs LLM analysis, applies Signal Engine guardrails, renders charts, and publishes `analysis:completed` events. |
+| **WebAPI** | `5001` | Central REST gateway, caches news in SQLite (`SqliteNewsCacheStore`), persists analysis results in SQLite (`trading.db`), handles composite news and sentiment APIs, and routes requests/responses via Redis EventBus. |
+| **Telegram** | `5002` | Telegram bot service, uses long-polling for commands and listens to `analysis:completed` Redis events to publish analysis with charts. |
+| **Discord** | `5003` | Discord bot service, registers slash commands and listens to `analysis:completed` Redis events to post rich embeds with charts. |
 
 ### Shared Libraries
 
 | Library | Description |
 |---------|-------------|
-| **NetGding.Analyzer** | Computes technical indicators, resolves market regime, structures LLM prompts/parsers, runs the Signal Engine, and computes risk parameters. |
-| **NetGding.ChartRenderer** | Generates professional TradingView charts using Chart-Img API, overlaying support and resistance lines. |
-| **NetGding.Contracts** | Shared models (e.g. `AnalysisResult`, `OhlcvBar`, `NewsArticle`, `IndicatorSnapshot`) and enums. |
-| **NetGding.Configurations** | Shared configuration helpers, including `.env` file loader and HTTP retry handler. |
+| **NetGding.Analyzer** | Computes technical indicators (EMA, MACD, RSI, Bollinger Bands, ATR, VWAP, Support/Resistance), resolves market regime, structures LLM prompts/parsers, runs the Signal Engine guardrails, and computes Spot risk management parameters. |
+| **NetGding.ChartRenderer** | Generates TradingView charts using Chart-Img API, overlaying support and resistance lines. |
+| **NetGding.Contracts** | Shared DTOs (`AnalysisResult`, `OhlcvBar`, `IndicatorSnapshot`, `NewsItem`), Event models (`AnalysisCompletedEvent`, `AnalysisRequestEvent`, `AnalysisResponseEvent`), Redis EventBus implementation (`RedisEventBus`), caching interfaces (`IAnalysisCache`, `RedisAnalysisCache`), `WebApiClient`, `JsonDefaults`, `ValidationConstants`, and `ErrorCodes`. |
+| **NetGding.Configurations** | Shared configuration helpers (`RedisOptions`, `CollectorOptions`, `WebApiOptions`, etc.), `.env` file loader, HTTP retry handler (`HttpRetryHelper`), and messaging extension setup. |
 
 ---
 
 ## How It Works?
 
-### 1. Data Collection
-The collector service ([OnDemandAnalyzer.cs](NetGding.Services/NetGding.Collector/Services/OnDemandAnalyzer.cs)) checks the exchange and market type. It uses [MarketDataCollectorResolver.cs](NetGding.Services/NetGding.Collector/Services/MarketData/MarketDataCollectorResolver.cs) to select either [BinanceMarketDataCollector.cs](NetGding.Services/NetGding.Collector/Services/MarketData/BinanceMarketDataCollector.cs) or [OkxMarketDataCollector.cs](NetGding.Services/NetGding.Collector/Services/MarketData/OkxMarketDataCollector.cs). It fetches the required amount of OHLCV bars (minimum 250 bars) and normalizes the symbols (for example, applying futures formats like `.P` or `-SWAP`).
+### 1. Data Collection & Caching
+The collector service ([OnDemandAnalyzer.cs](NetGding.Services/NetGding.Collector/Services/OnDemandAnalyzer.cs)) checks the exchange. It uses [MarketDataCollectorResolver.cs](NetGding.Services/NetGding.Collector/Services/MarketData/MarketDataCollectorResolver.cs) to select either [BinanceMarketDataCollector.cs](NetGding.Services/NetGding.Collector/Services/MarketData/BinanceMarketDataCollector.cs) or [OkxMarketDataCollector.cs](NetGding.Services/NetGding.Collector/Services/MarketData/OkxMarketDataCollector.cs). It uses [CachedMarketDataProvider.cs](NetGding.Services/NetGding.Collector/Services/MarketData/CachedMarketDataProvider.cs) to cache candles in Redis/Memory, preventing exchange rate limits. Symbols are flexibly normalized (for example, `BTC`, `BTC/USDT`, or `BTCUSDT`).
 
 ### 2. Technical Indicators
 The system computes various indicators using [NetGding.Analyzer](NetGding.Services/NetGding.Analyzer):
@@ -74,8 +80,8 @@ The system automatically classifies the current market regime using [MarketRegim
 * **Trending**: True if fast EMA (9) and slow EMA (21) spread is greater than 0.5% AND the MACD histogram has directional momentum (absolute histogram value is greater than 0).
 * **Ranging**: The default state if the market is not volatile and not trending.
 
-### 4. LLM Analysis
-It builds a structural text prompt containing the OHLCV bars, calculated indicator values, news articles, and sentiment data (like the CoinMarketCap Fear & Greed Index). The prompt is sent to the LLM (for example, OpenRouter or local Gemma) to get a JSON response with:
+### 4. LLM Analysis & Composite News Integration
+It builds a structural text prompt containing the OHLCV bars, calculated indicator values, market news articles, and sentiment data (like the CoinMarketCap Fear & Greed Index). News items are aggregated from multiple providers ([GoogleNewsRssNewsProvider.cs](NetGding.Services/NetGding.WebAPI/Services/GoogleNewsRssNewsProvider.cs), [AlphaVantageNewsProvider.cs](NetGding.Services/NetGding.WebAPI/Services/AlphaVantageNewsProvider.cs)) and cached in SQLite with a 6-hour refresh interval and 5-day retention ([SqliteNewsCacheStore.cs](NetGding.Services/NetGding.WebAPI/Services/SqliteNewsCacheStore.cs)). The prompt is sent to the LLM (for example, OpenRouter or local Gemma) to get a JSON response with:
 * `trend`: bullish, bearish, or neutral.
 * `momentum`: strong, weak, or divergence.
 * `volatility`: high or low.
@@ -89,16 +95,17 @@ The raw LLM signal goes through [SignalEngine.cs](NetGding.Services/NetGding.Ana
 * **EMA Alignment**: Rejects BUY if EMA 9 is below EMA 21 (or SELL if EMA 9 is above EMA 21) when in a trending market.
 * **Stability Filter**: Suppresses rapid trade reversals (Buy to Sell or vice versa) unless the new signal exceeds a higher confidence threshold (`ReversalConfidence`).
 
-### 6. Risk Calculator (DYOR)
-If a trade is valid, [RiskCalculator.cs](NetGding.Services/NetGding.Analyzer/Signal/RiskCalculator.cs) computes management parameters:
-* **Spot**: Generates one `BuyPrice` (current price) and two Dollar-Cost Averaging levels (`DCA1 = Price - ATR`, `DCA2 = Price - ATR * 2`).
-* **Futures**: Generates `Entry` (current price), `StopLoss` and `TakeProfit` based on ATR multipliers configured in settings.
+### 6. Spot Risk Calculator (DYOR)
+If a trade signal is valid, [RiskCalculator.cs](NetGding.Services/NetGding.Analyzer/Signal/RiskCalculator.cs) computes Spot trade parameters:
+* **Buy Price**: Current market entry price.
+* **Dollar-Cost Averaging**: Computes `DCA1 = Price - ATR` and `DCA2 = Price - ATR * 2`.
+* **Stop Loss & Take Profit**: Computes risk levels based on ATR multipliers.
 
 ### 7. Chart Rendering
-Uses the external Chart-Img API service ([AnalysisChartRenderer.cs](NetGding.Services/NetGding.ChartRenderer/AnalysisChartRenderer.cs)) to render high-fidelity, professional TradingView-style candlestick and volume charts. It adds horizontal line drawings for the computed Support and Resistance levels (using green for Support and red for Resistance).
+Uses the external Chart-Img API service ([AnalysisChartRenderer.cs](NetGding.Services/NetGding.ChartRenderer/AnalysisChartRenderer.cs)) to render TradingView-style candlestick and volume charts. It adds horizontal line drawings for the computed Support and Resistance levels (using green for Support and red for Resistance).
 
-### 8. Persistence & Delivery
-The final data and chart are returned to the WebAPI. The WebAPI saves the analysis to SQLite and forwards it to the Telegram Bot ([BotPollingService.cs](NetGding.Services/NetGding.Telegram/Services/BotPollingService.cs)) and Discord Bot ([DiscordBotService.cs](NetGding.Services/NetGding.Discord/Services/DiscordBotService.cs)) to show to the user.
+### 8. Event-Driven Persistence & Delivery
+When analysis completes, the Collector publishes an `analysis:completed` event to the Redis EventBus. Subscriber workers in WebAPI ([AnalysisCompletedSubscriberWorker.cs](NetGding.Services/NetGding.WebAPI/Workers/AnalysisCompletedSubscriberWorker.cs)), Telegram ([TelegramAnalysisSubscriberWorker.cs](NetGding.Services/NetGding.Telegram/Services/TelegramAnalysisSubscriberWorker.cs)), and Discord ([DiscordAnalysisSubscriberWorker.cs](NetGding.Services/NetGding.Discord/Services/DiscordAnalysisSubscriberWorker.cs)) consume the event asynchronously to save the result to SQLite and publish formatted messages with charts to their target channels.
 
 ---
 
@@ -108,7 +115,8 @@ The final data and chart are returned to the WebAPI. The WebAPI saves the analys
 
 * [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 * [Docker & Docker Compose](https://docs.docker.com/get-docker/) *(for containerized deployment)*
-* LLM API key *(optional — works will both local or any others providers just do not forget to change the .env file )*
+* LLM API key *(works will both local or any others providers just do not forget to change the .env file )*
+* Redis 7.0+ *(included in docker-compose)*
 
 ### 1. Clone & Configure
 
@@ -127,12 +135,13 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `Llm_ApiKey` | LLM provider API key (OpenRouter, etc.) |
-| `Telegram_BotToken` | Telegram bot token from [@BotFather](https://t.me/BotFather) |
-| `Telegram_ChatId` | Target Telegram chat ID |
-| `Discord_BotToken` | Discord bot token |
-| `Discord_ChannelId` | Discord channel ID for notifications |
-| `Discord_GuildId` | Discord server (guild) ID |
+| `Redis__ConnectionString` | Redis connection string (e.g. `localhost:6379` or `redis:6379`). |
+| `Llm_ApiKey` | LLM provider API key (OpenRouter, etc.). |
+| `Telegram_BotToken` | Telegram bot token from [@BotFather](https://t.me/BotFather). |
+| `Telegram_ChatId` | Target Telegram chat ID. |
+| `Discord_BotToken` | Discord bot token. |
+| `Discord_ChannelId` | Discord channel ID for notifications. |
+| `Discord_GuildId` | Discord server (guild) ID. |
 | `CoinMarketCap_ApiKey` | API key for fetching the Crypto Fear and Greed Index. |
 | `WebApi_ConnectionString` | SQLite connection string for analysis storage. |
 | `AlphaVantage_ApiKey` | API key for fetching market news. |
@@ -150,6 +159,7 @@ Services will be available at:
 
 | Service | URL |
 |---------|-----|
+| Redis | `localhost:6379` |
 | Collector | `http://localhost:5000` |
 | WebAPI | `http://localhost:5001` |
 | Telegram | `http://localhost:5002` |
@@ -159,6 +169,8 @@ Services will be available at:
 ### 2b. Run Locally (Development)
 
 ```bash
+# Ensure Redis server is running on localhost:6379
+
 # Terminal 1 — Collector
 dotnet run --project NetGding.Services/NetGding.Collector
 
@@ -181,8 +193,8 @@ dotnet run --project NetGding.Services/NetGding.Discord
 | Command | Description |
 |---------|-------------|
 | `/start` or `/help` | Show available commands and indicator legend. |
-| `/latest <symbol>` | Get the most recent cached analysis (D1+). |
-| `/analyze <symbol> <timeframe> [<exchange>] [<market_type>]` | Trigger a live on-demand analysis (defaults: `binance`, `spot`). |
+| `/latest <symbol>` | Get the most recent cached analysis (e.g., `/latest BTC`). |
+| `/analyze <symbol> <timeframe> [<exchange>]` | Trigger a live on-demand analysis (defaults: `binance`). |
 | `/fagi` | Get the current Crypto Fear and Greed Index. |
 
 ### Discord Slash Commands
@@ -190,8 +202,8 @@ dotnet run --project NetGding.Services/NetGding.Discord
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands and indicator legend. |
-| `/latest <symbol>` | Get the most recent cached analysis (D1+). |
-| `/analyze <symbol> <timeframe> [<exchange>] [<market_type>]` | Trigger a live on-demand analysis (defaults: `binance`, `spot`). |
+| `/latest <symbol>` | Get the most recent cached analysis (e.g., `/latest BTC`). |
+| `/analyze <symbol> <timeframe> [<exchange>]` | Trigger a live on-demand analysis (defaults: `binance`). |
 | `/fagi` | Get the current Crypto Fear and Greed Index. |
 
 ### Supported Timeframes
@@ -201,10 +213,9 @@ dotnet run --project NetGding.Services/NetGding.Discord
 ### Examples
 
 ```
-/analyze BTC 4h                    → Analyze BTC/USDT spot on Binance (using defaults)
-/analyze BTC 4h okx future          → Analyze BTC-USDT-SWAP on OKX
-/analyze ETH/USD 1d okx future      → Analyze ETH-USDT-SWAP on OKX
-/latest SOL                         → Get latest cached analysis for SOL/USD
+/analyze BTC 4h                    → Analyze BTC/USDT spot on Binance
+/analyze ETH 1d okx                → Analyze ETH/USDT spot on OKX
+/latest SOL                         → Get latest cached analysis for SOL/USDT
 ```
 
 ---
@@ -217,13 +228,13 @@ The primary endpoints exposed by the services:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/analysis/on-demand` | Trigger on-demand analysis. Re-routed to the Collector. |
-| `POST` | `/api/analysis/publish` | Save analysis results to SQLite and forward them to active bots. |
+| `POST` | `/api/analysis/on-demand` | Trigger on-demand analysis via Redis EventBus request. |
+| `POST` | `/api/analysis/publish` | Save analysis results to SQLite and broadcast via Redis EventBus. |
 | `GET` | `/api/analysis/latest/{symbol}?timeframe=1d` | Get the latest cached analysis. |
 | `GET` | `/api/analysis/history/{symbol}?timeframe=1d&page=1&pageSize=20` | Get paginated analysis history. |
-| `GET` | `/api/news/{symbol}` | Fetch stored market news articles. |
-| `GET` | `/api/indicators/{symbol}?timeframe=1d&exchange=binance&marketType=spot` | Fetch indicators. |
-| `GET` | `/api/fear-and-greed` | Fetch the current Crypto Fear & Greed Index from CoinMarketCap. |
+| `GET` | `/api/news/{symbol}` | Fetch stored market news articles (cached in SQLite). |
+| `GET` | `/api/indicators/{symbol}?timeframe=1d&exchange=binance` | Fetch indicators. |
+| `GET` | `/api/fear-and-greed` | Fetch the current Crypto Fear & Greed Index. |
 | `GET` | `/api/health` | Health check probe endpoint. |
 
 #### Input Schema: `POST /api/analysis/on-demand`
@@ -232,7 +243,6 @@ The primary endpoints exposed by the services:
   "symbol": "BTC/USDT",
   "timeframe": "4h",
   "exchange": "binance",
-  "marketType": "spot",
   "chartSymbol": "BINANCE:BTCUSDT",
   "chartOnly": false
 }
@@ -243,7 +253,7 @@ The primary endpoints exposed by the services:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/analysis/on-demand` | Trigger direct analysis pipeline. |
-| `GET` | `/api/market/dom?symbol=BTCUSDT&exchange=binance&marketType=spot` | Get raw Depth of Market (Order Book) data. |
+| `GET` | `/api/market/dom?symbol=BTCUSDT&exchange=binance` | Get raw Depth of Market (Order Book) data. |
 
 Full interactive documentation is available at `/swagger` when running in development mode.
 
@@ -251,24 +261,30 @@ Full interactive documentation is available at `/swagger` when running in develo
 
 ## Configuration Reference
 
+### Redis Settings (`appsettings.json` / `.env`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ConnectionString` | `localhost:6379` | Redis server connection string. |
+
 ### WebAPI Settings (`appsettings.json` → `WebApi` section)
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `TelegramServiceUrl` | `http://localhost:5002` | Endpoint URL of the Telegram Bot service. |
-| `DiscordServiceUrl` | `http://localhost:5003` | Endpoint URL of the Discord Bot service. |
 | `CollectorServiceUrl` | `http://localhost:5000` | Endpoint URL of the Collector service. |
 | `TimeoutSeconds` | `20` | Default HTTP request timeout. |
 | `CollectorTimeoutSeconds` | `30` | Timeout when querying the Collector. |
 | `ConnectionString` | `Data Source=db/trading.db` | SQLite connection string. |
 | `NewsDefaultLimit` | `20` | Default count of news items returned. |
+| `NewsCacheRefreshHours` | `6` | Refresh interval in hours for news SQLite cache. |
+| `NewsCacheRetentionDays` | `5` | Retention period in days for news SQLite cache. |
 
 ### Collector Settings (`appsettings.json` → `Collector` section)
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `LookbackDays` | `30` | Minimum lookup period in days for candles. |
-| `WebApiPublishEnabled` | `false` | Automatically publishes computed analysis results to the WebAPI. |
+| `WebApiPublishEnabled` | `false` | Automatically publishes computed analysis results. |
 | `WebApiBaseUrl` | `http://localhost:5001` | Gateway API URL. |
 | `ChartEnabled` | `true` | Enables/Disables rendering charts. |
 | `ChartImgApiKey` | `""` | API key from chart-img.com to request TradingView charts. |
@@ -281,7 +297,7 @@ Full interactive documentation is available at `/swagger` when running in develo
 | `ModelName` | `google/gemma-4-26b-a4b-it:free` | Model name. |
 | `Temperature` | `0.3` | Controls model output variance. |
 | `MaxTokens` | `2048` | Maximum token limit in response. |
-| `MaxAttempts` | `3` | Attempts to retry if 429 rate-limited. |
+| `MaxAttempts` | `3` | Attempts to retry if rate-limited. |
 
 ### Signal Engine Settings (`appsettings.json` → `SignalEngine` section)
 
@@ -301,36 +317,44 @@ Full interactive documentation is available at `/swagger` when running in develo
 
 ```
 NetGding/
-├── NetGding.Configurations/        # Shared config (options, env loader, retry helper)
-│   ├── Options/                    # CollectorOptions, TelegramOptions, DiscordOptions, WebApiOptions
-│   └── Bootstrap/                  # EnvFileLoader, HttpRetryHelper
-├── NetGding.Contracts/             # Shared models & interfaces
-│   └── Models/
-│       ├── Analysis/               # AnalysisResult, LlmSignal, IndicatorSnapshot, RiskManagement
-│       ├── MarketData/             # OhlcvBar, OhlcvSeries
-│       ├── News/                   # NewsArticle, NewsCollection
-│       └── Indicators/             # EMA, MACD, RSI, BollingerBands, ATR, Volume, VWAP
+├── ERROR_CODES.md                     # Centralized error codes reference
+├── appsettings.Shared.json            # Shared configuration across microservices
+├── redis.conf                         # Redis server configuration
+├── NetGding.Configurations/           # Shared configuration & bootstrap helpers
+│   ├── Bootstrap/                     # EnvFileLoader, HttpRetryHelper, MessagingServiceExtensions, HealthEndpointExtensions
+│   └── Options/                       # CollectorOptions, DiscordOptions, RedisOptions, TelegramOptions, WebApiOptions
+├── NetGding.Contracts/                # Shared models, DTOs, events & interfaces
+│   ├── Events/                        # AnalysisCompletedEvent, AnalysisRequestEvent, AnalysisResponseEvent, EventTopics, FearAndGreedEvent, NewsDataEvent
+│   ├── Exceptions/                    # ErrorCodes
+│   ├── Messaging/                     # IEventBus, RedisEventBus, AnalysisSubscriberWorkerBase
+│   ├── Models/
+│   │   ├── Analysis/                  # AnalysisResult, LlmSignal, IndicatorSnapshot, RiskManagement, OnDemandRequest
+│   │   ├── Indicators/                # EMA, MACD, RSI, BollingerBands, ATR, Volume, VWAP
+│   │   ├── MarketData/                # OhlcvBar, OhlcvSeries, MarketParsingHelper
+│   │   └── News/                      # NewsArticle, NewsCollection, NewsItem
+│   └── Services/                      # IAnalysisCache, InMemoryAnalysisCache, RedisAnalysisCache, IWebApiClient, WebApiClient
 ├── NetGding.Services/
-│   ├── NetGding.Analyzer/          # Analysis logic library
-│   │   ├── Indicators/             # TrendCalculator, MomentumCalculator, VolatilityCalculator, etc.
-│   │   ├── Llm/                    # LlmAnalyzer (prompt builder, API caller, response parser)
-│   │   ├── Signal/                 # SignalEngine (guardrails, EMA filter, reversal suppression)
-│   │   └── Gemma/                  # Gemma model integration
-│   ├── NetGding.ChartRenderer/     # TradingView chart generation (via Chart-Img API)
-│   ├── NetGding.Collector/         # Data collection & analysis orchestration service
-│   │   ├── Services/               # OnDemandAnalyzer, WebApiAnalysisPublisher
-│   │   │   └── MarketData/         # Binance/OKX spot-future collectors + resolver
-│   │   └── Persistence/            # JSON file persistence
-│   ├── NetGding.WebAPI/            # Central REST API gateway
-│   │   ├── Endpoints/              # Analysis, News, Indicators, Health, Support endpoints
-│   │   └── Services/               # Store (Sqlite and InMemory), Forwarders, CollectorGateway, Sentiment / News providers
-│   ├── NetGding.Telegram/          # Telegram bot service
-│   │   ├── Services/               # BotPollingService, TelegramNotifier
-│   │   └── Formatting/             # AnalysisMessageFormatter
-│   └── NetGding.Discord/           # Discord bot service
-│       ├── Commands/               # Slash commands (AnalysisCommands)
-│       ├── Services/               # DiscordBotService, DiscordNotifier
-│       └── Formatting/             # AnalysisEmbedFormatter
+│   ├── NetGding.Analyzer/             # Analysis logic library
+│   │   ├── Indicators/                # TrendCalculator, MomentumCalculator, VolatilityCalculator, SupportResistanceCalculator
+│   │   ├── Llm/                       # LlmAnalyzer (prompt builder, API caller, response parser), LlmOptions
+│   │   └── Signal/                    # SignalEngine, MarketRegimeDetector, RiskCalculator, SignalEngineOptions
+│   ├── NetGding.ChartRenderer/        # TradingView chart generation (via Chart-Img API)
+│   ├── NetGding.Collector/            # Data collection & analysis orchestration service
+│   │   ├── Endpoints/                 # AnalysisEndpoints
+│   │   └── Services/                  # OnDemandAnalyzer
+│   │       └── MarketData/            # BinanceMarketDataCollector, OkxMarketDataCollector, MarketDataCollectorResolver, CachedMarketDataProvider
+│   ├── NetGding.WebAPI/               # Central REST API gateway
+│   │   ├── Endpoints/                 # AnalysisEndpoints, IndicatorEndpoints, NewsEndpoints, HealthEndpoints
+│   │   ├── Persistence/               # TradingDbContext, NewsItemEntity, SqliteNewsCacheStore, INewsCacheStore
+│   │   ├── Services/                  # SqliteAnalysisResultStore, CollectorHttpClient, GoogleNewsRssNewsProvider, AlphaVantageNewsProvider, CoinMarketCapFearAndGreedProvider, CompositeNewsProvider, CachedNewsProvider
+│   │   └── Workers/                   # AnalysisCompletedSubscriberWorker
+│   ├── NetGding.Telegram/             # Telegram bot service
+│   │   ├── Formatting/                # AnalysisMessageFormatter
+│   │   └── Services/                  # BotPollingService, TelegramAnalysisSubscriberWorker
+│   └── NetGding.Discord/              # Discord bot service
+│       ├── Commands/                  # AnalysisCommands
+│       ├── Formatting/                # AnalysisEmbedFormatter
+│       └── Services/                  # DiscordBotService, DiscordAnalysisSubscriberWorker
 ├── docker-compose.yml
 ├── .env.example
 └── NetGding.sln
